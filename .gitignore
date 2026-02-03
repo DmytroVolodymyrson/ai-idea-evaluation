@@ -1,0 +1,32 @@
+# Private meeting transcripts and notes
+Meetings/
+
+# Generated analysis outputs
+Ai generated analysis/
+
+# Internal project files
+CLAUDE.md
+Implementation Plan.md
+
+# macOS system files
+.DS_Store
+*.DS_Store
+
+# Environment and secrets
+.env
+.env.*
+*.env
+secrets/
+credentials/
+
+# Node modules (if any)
+node_modules/
+
+# IDE files
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+*.log

@@ -1,0 +1,1650 @@
+{
+  "name": "AI Idea Evaluation - Automated Competitor Analysis",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "AI Idea Evaluation",
+        "formDescription": "Submit your business idea for automated competitor analysis and market evaluation. Our AI will research competitors, analyze the market, and generate a comprehensive evaluation document.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Idea Name",
+              "placeholder": "e.g., The AI Biomarker Interpreter",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Idea Summary",
+              "fieldType": "textarea",
+              "placeholder": "Describe your idea in 2-3 sentences. What problem does it solve? What makes it unique?",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target Industry",
+              "placeholder": "e.g., Health Tech, SaaS, E-commerce",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target Audience",
+              "fieldType": "textarea",
+              "placeholder": "Who are the primary users? e.g., Biohackers, fitness enthusiasts, small business owners",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Initial Pricing Thoughts",
+              "placeholder": "e.g., $29-49/month subscription (optional)"
+            },
+            {
+              "fieldLabel": "Known Competitors",
+              "fieldType": "textarea",
+              "placeholder": "List any competitors you already know about (optional)"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "form-trigger",
+      "name": "Idea Input Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "content": "You are a business research assistant. Find and list the top competitors for the given business idea. Return ONLY a JSON array of competitor objects with 'name' and 'url' fields. No explanations.",
+              "role": "system"
+            },
+            {
+              "content": "=Find the top 3-5 competitors for this business idea: {{ $json['Idea Summary'] }}. Industry: {{ $json['Target Industry'] }}. Return JSON array like: [{\"name\": \"Competitor Name\", \"url\": \"https://example.com\"}]"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 1000,
+          "temperature": 0.2
+        },
+        "requestOptions": {}
+      },
+      "id": "competitor-discovery-1",
+      "name": "Discover Competitors (Search 1)",
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        224,
+        -288
+      ],
+      "credentials": {
+        "perplexityApi": {
+          "name": "YOUR_PERPLEXITYAPI_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "content": "You are a business research assistant. Find companies with pricing and features in a specific market. Return ONLY a JSON array of competitor objects with 'name' and 'url' fields. No explanations.",
+              "role": "system"
+            },
+            {
+              "content": "=What are the top companies offering {{ $json['Target Industry'] }} solutions for {{ $json['Target Audience'] }}? Focus on companies with similar features to: {{ $json['Idea Summary'] }}. Return JSON array like: [{\"name\": \"Company Name\", \"url\": \"https://example.com\"}]"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 1000,
+          "temperature": 0.2
+        },
+        "requestOptions": {}
+      },
+      "id": "competitor-discovery-2",
+      "name": "Discover Competitors (Search 2)",
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        224,
+        -96
+      ],
+      "credentials": {
+        "perplexityApi": {
+          "name": "YOUR_PERPLEXITYAPI_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "merge-competitors",
+      "name": "Merge Competitor Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        448,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse competitor results from both Perplexity searches\nconst items = $input.all();\nconst allCompetitors = [];\n\nfor (const item of items) {\n  try {\n    // Native Perplexity node returns choices[0].message.content\n    const content = item.json.choices?.[0]?.message?.content || '';\n    // Extract JSON array from response\n    const jsonMatch = content.match(/\\[.*\\]/s);\n    if (jsonMatch) {\n      const competitors = JSON.parse(jsonMatch[0]);\n      allCompetitors.push(...competitors);\n    }\n  } catch (e) {\n    console.log('Parse error:', e.message);\n  }\n}\n\n// Deduplicate by name (case insensitive)\nconst seen = new Set();\nconst uniqueCompetitors = allCompetitors.filter(c => {\n  const key = c.name.toLowerCase();\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n}).slice(0, 3); // Take top 3\n\n// Return each competitor as separate item for loop processing\nreturn uniqueCompetitors.map(c => ({\n  json: {\n    competitorName: c.name,\n    competitorUrl: c.url,\n    // Carry forward original form data\n    ideaName: $('Idea Input Form').first().json['Idea Name'],\n    ideaSummary: $('Idea Input Form').first().json['Idea Summary'],\n    targetIndustry: $('Idea Input Form').first().json['Target Industry'],\n    targetAudience: $('Idea Input Form').first().json['Target Audience'],\n    pricingThoughts: $('Idea Input Form').first().json['Initial Pricing Thoughts'] || '',\n    knownCompetitors: $('Idea Input Form').first().json['Known Competitors'] || ''\n  }\n}));"
+      },
+      "id": "parse-competitors",
+      "name": "Parse & Dedupe Competitors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "loop-competitors",
+      "name": "Loop Over Competitors",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        896,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "content": "You are a pricing research specialist. Find detailed pricing information for the specified company. Include all pricing tiers, plans, and costs. Be specific with dollar amounts.",
+              "role": "system"
+            },
+            {
+              "content": "=What is the pricing structure for {{ $json.competitorName }} ({{ $json.competitorUrl }})? Include all plans, tiers, and any hidden costs or upsells."
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 1500,
+          "temperature": 0.2
+        },
+        "requestOptions": {}
+      },
+      "id": "research-pricing",
+      "name": "Research Pricing",
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -384
+      ],
+      "credentials": {
+        "perplexityApi": {
+          "name": "YOUR_PERPLEXITYAPI_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "content": "You are a product analyst. Analyze the features and capabilities of the specified company. Focus on their main offerings, unique features, and value proposition.",
+              "role": "system"
+            },
+            {
+              "content": "=What are the main features and capabilities of {{ $json.competitorName }} ({{ $json.competitorUrl }})? Include their core product offerings, unique features, and what they're known for."
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 1500,
+          "temperature": 0.2
+        },
+        "requestOptions": {}
+      },
+      "id": "research-features",
+      "name": "Research Features",
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -192
+      ],
+      "credentials": {
+        "perplexityApi": {
+          "name": "YOUR_PERPLEXITYAPI_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "content": "You are a competitive analyst. Find weaknesses, complaints, and negative reviews about the specified company. Focus on user frustrations, limitations, and areas where competitors could do better.",
+              "role": "system"
+            },
+            {
+              "content": "=What are the weaknesses, complaints, and limitations of {{ $json.competitorName }} ({{ $json.competitorUrl }})? Look for user complaints, negative reviews, limitations in their offering, and things users wish were different."
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 1500,
+          "temperature": 0.2
+        },
+        "requestOptions": {}
+      },
+      "id": "research-weaknesses",
+      "name": "Research Weaknesses",
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "credentials": {
+        "perplexityApi": {
+          "name": "YOUR_PERPLEXITYAPI_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 3,
+        "options": {
+          "includeUnpaired": true
+        }
+      },
+      "id": "merge-research",
+      "name": "Merge Competitor Research",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1408,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all research for this competitor\nconst loopItem = $('Loop Over Competitors').first().json;\nconst pricingData = $('Research Pricing').first().json;\nconst featuresData = $('Research Features').first().json;\nconst weaknessesData = $('Research Weaknesses').first().json;\n\nconst extractContent = (data) => {\n  // Native Perplexity node returns choices[0].message.content\n  return data?.choices?.[0]?.message?.content || 'No data available';\n};\n\nreturn [{\n  json: {\n    competitorName: loopItem.competitorName,\n    competitorUrl: loopItem.competitorUrl,\n    pricing: extractContent(pricingData),\n    features: extractContent(featuresData),\n    weaknesses: extractContent(weaknessesData),\n    // Carry forward original data\n    ideaName: loopItem.ideaName,\n    ideaSummary: loopItem.ideaSummary,\n    targetIndustry: loopItem.targetIndustry,\n    targetAudience: loopItem.targetAudience,\n    pricingThoughts: loopItem.pricingThoughts,\n    knownCompetitors: loopItem.knownCompetitors\n  }\n}];"
+      },
+      "id": "aggregate-research",
+      "name": "Aggregate Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all competitor research from loop iterations\n// This node runs when loop is complete - use context to get all items\n\n// Get all items from Aggregate Research across all loop iterations\nconst allItems = [];\nconst context = $getWorkflowStaticData('global');\n\n// Try to get items from the Aggregate Research node\ntry {\n  const aggregateItems = $('Aggregate Research').all();\n  for (const item of aggregateItems) {\n    allItems.push(item.json);\n  }\n} catch (e) {\n  // Fallback: try to get from context\n}\n\n// If no items found, check if we have any data\nif (allItems.length === 0) {\n  return [{ json: { error: 'No competitor research found', competitors: [] } }];\n}\n\n// Compile all research into single object\nconst competitors = allItems.map(item => ({\n  name: item.competitorName,\n  url: item.competitorUrl,\n  pricing: item.pricing,\n  features: item.features,\n  weaknesses: item.weaknesses\n}));\n\n// Get original form data from first item\nconst firstItem = allItems[0] || {};\n\nreturn [{\n  json: {\n    ideaName: firstItem.ideaName,\n    ideaSummary: firstItem.ideaSummary,\n    targetIndustry: firstItem.targetIndustry,\n    targetAudience: firstItem.targetAudience,\n    pricingThoughts: firstItem.pricingThoughts,\n    knownCompetitors: firstItem.knownCompetitors,\n    competitors: competitors,\n    researchCompiled: competitors.map(c => \n      `## ${c.name}\\nURL: ${c.url}\\n\\n### Pricing\\n${c.pricing}\\n\\n### Features\\n${c.features}\\n\\n### Weaknesses\\n${c.weaknesses}`\n    ).join('\\n\\n---\\n\\n')\n  }\n}];"
+      },
+      "id": "collect-all-research",
+      "name": "Collect All Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -576
+      ]
+    },
+    {
+      "parameters": {
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a business analyst evaluating a new business idea. Generate a comprehensive idea evaluation document.\n\n## INPUT DATA\n\nIDEA NAME: {{ $json.ideaName }}\n\nIDEA SUMMARY: {{ $json.ideaSummary }}\n\nTARGET INDUSTRY: {{ $json.targetIndustry }}\n\nTARGET AUDIENCE: {{ $json.targetAudience }}\n\nINITIAL PRICING THOUGHTS: {{ $json.pricingThoughts }}\n\n## COMPETITOR RESEARCH DATA:\n\n{{ $json.researchCompiled }}\n\n---\n\n## YOUR TASK\n\nGenerate a comprehensive idea evaluation document following this EXACT structure and style:\n\n## Idea #1: [Idea Name]\n\n1. Summary\n[2-3 sentence description of the idea]\n\nThe \"Hook\":\n[Unique angle/value proposition that differentiates from competitors - make this compelling and memorable]\n\n## 2. Competitor Analysis\n\nFor EACH competitor, provide:\n\n[Number]. Competitor: [Name]\n[URL]\n\nThe Model: [Description of their business model - how do they make money?]\n\nThe Price:\n  - [Pricing tier 1 with specific dollar amounts]\n  - [Pricing tier 2 with specific dollar amounts]\n  - [Any hidden costs or upsells]\n\nThe Features: [Key features they offer - be specific]\n\nThe Weakness (Our \"Attack Vector\"):\n  - [Weakness 1 - specific issue we can exploit]\n  - [Weakness 2 - another opening for us]\n  - [Strategic insight if applicable]\n\n| Feature | [Competitor Name] (Them) | {{ $json.ideaName }} (Us) |\n| :---- | :---- | :---- |\n| Philosophy | \"[Their approach in quotes]\" | \"[Our better approach in quotes]\" |\n| Pricing | $X | $Y (our competitive price) |\n| User Experience | \"[Their UX description]\" | \"[Our better UX]\" |\n| Incentive | [What they really want] | [What we want - aligned with user] |\n\n[Repeat this section for EACH competitor]\n\n### 3. The Market Matrix (Comparison)\n\n| Feature | [Competitor 1] | [Competitor 2] | [Competitor 3] | {{ $json.ideaName }} (You) |\n| :---- | :---- | :---- | :---- | :---- |\n| Primary Goal | ... | ... | ... | ... |\n| Upload/Entry Cost | ... | ... | ... | ... |\n| Vibe/Positioning | ... | ... | ... | ... |\n| Best For | ... | ... | ... | ... |\n\n## 3. Business Analysis\n\n- Target Audience: [Detailed target audience description]\n- Unique Value Proposition (UVP): [Key differentiator - what makes us different and better]\n\n### 1. The Core Business Strategy\n[Description of business model and why it works - explain the strategic advantage]\n\n### 2. Primary Revenue Streams\n\n#### Stream A: [Revenue Stream Name]\n- Product: [What we sell]\n- Price: $X\n- Why it wins: [Competitive advantage over competitors]\n\n#### Stream B: [Secondary Revenue Stream]\n- Product: [What we sell]\n- Price: $X\n- Why it wins: [Competitive advantage]\n\n### 3. Secondary Revenue Streams\n[Additional monetization opportunities - affiliate, partnerships, B2B, etc.]\n\n### Final Comparison Table\n\n| Revenue Stream | {{ $json.ideaName }} (Us) | [Competitor 1] | [Competitor 2] | [Competitor 3] |\n| :---- | :---- | :---- | :---- | :---- |\n| Primary Cost | $X | ... | ... | ... |\n| Subscription | $X/mo | ... | ... | ... |\n| Hardware/Extras | ... | ... | ... | ... |\n| Primary Customer | ... | ... | ... | ... |\n\n---\n\n## IMPORTANT GUIDELINES:\n1. Be specific with pricing - use actual dollar amounts from research\n2. Make attack vectors actionable - specific weaknesses we can exploit\n3. Include strategic insights where competitors reveal opportunities\n4. Tables must be properly formatted Markdown\n5. The \"Hook\" should be memorable and quotable\n6. Revenue streams should be realistic and based on competitor analysis\n7. CRITICAL: Do NOT use asterisks for bold formatting (no ** or * markers). The output will be converted to Google Docs where these symbols appear literally. Use plain text and rely on heading hierarchy (##, ###, ####) for structure instead.\n8. Use dash (-) for bullet points, not asterisks\n\nOutput in clean Markdown format without any bold/italic markers."
+            }
+          ]
+        }
+      },
+      "id": "ai-synthesis",
+      "name": "AI Analysis & Synthesis",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        -576
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "name": "YOUR_ANTHROPICAPI_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the analysis content from native Anthropic node response\nconst response = $input.first().json;\n\n// Native Anthropic node returns content array: { content: [{ type: 'text', text: '...' }] }\nlet analysisContent = '';\n\nif (response.content && Array.isArray(response.content)) {\n  // Extract text from content array\n  analysisContent = response.content\n    .filter(block => block.type === 'text')\n    .map(block => block.text)\n    .join('\\n');\n} else if (response.text) {\n  // Fallback for simplified output\n  analysisContent = response.text;\n} else if (response.message) {\n  // Another fallback\n  analysisContent = response.message;\n}\n\n// Get original data from Collect All Research\nlet originalData = {};\ntry {\n  originalData = $('Collect All Research').first().json;\n} catch (e) {\n  originalData = { ideaName: 'Unknown', competitors: [] };\n}\n\nreturn [{\n  json: {\n    ideaName: originalData.ideaName,\n    markdownContent: analysisContent,\n    competitors: originalData.competitors\n  }\n}];"
+      },
+      "id": "extract-analysis",
+      "name": "Extract Analysis Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        -576
+      ]
+    },
+    {
+      "parameters": {
+        "folderId": "1aRehqdNLKZzLeXtMwznOcXiWwv23xyJS",
+        "title": "={{ 'AI Idea Evaluation - ' + $json.ideaName + ' - ' + $now.format('yyyy-MM-dd') }}"
+      },
+      "id": "create-google-doc",
+      "name": "Create Google Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        2144,
+        -576
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "name": "YOUR_GOOGLEDOCSOAUTH2API_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentURL": "={{ $json.id }}",
+        "actionsUi": {
+          "actionFields": [
+            {
+              "action": "insert",
+              "text": "={{ $('Extract Analysis Content').first().json.markdownContent }}"
+            }
+          ]
+        }
+      },
+      "id": "update-doc-content",
+      "name": "Update Doc Content",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        -576
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "name": "YOUR_GOOGLEDOCSOAUTH2API_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://md2doc.n8n.aemalsayer.com/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "output",
+              "value": "={{ $json.markdownContent }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1920,
+        -576
+      ],
+      "id": "c3044dc7-aefe-4ee1-baae-793adf94e067",
+      "name": "HTTP Request",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "name": "YOUR_GOOGLEDOCSOAUTH2API_CREDENTIAL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Idea Input Form": {
+      "main": [
+        [
+          {
+            "node": "Discover Competitors (Search 1)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Discover Competitors (Search 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discover Competitors (Search 1)": {
+      "main": [
+        [
+          {
+            "node": "Merge Competitor Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discover Competitors (Search 2)": {
+      "main": [
+        [
+          {
+            "node": "Merge Competitor Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Competitor Results": {
+      "main": [
+        [
+          {
+            "node": "Parse & Dedupe Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Dedupe Competitors": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Competitors": {
+      "main": [
+        [
+          {
+            "node": "Collect All Research",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Research Pricing",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Research Features",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Research Weaknesses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Pricing": {
+      "main": [
+        [
+          {
+            "node": "Merge Competitor Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Features": {
+      "main": [
+        [
+          {
+            "node": "Merge Competitor Research",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Research Weaknesses": {
+      "main": [
+        [
+          {
+            "node": "Merge Competitor Research",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Competitor Research": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Research": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect All Research": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis & Synthesis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis & Synthesis": {
+      "main": [
+        [
+          {
+            "node": "Extract Analysis Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Update Doc Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Doc Content": {
+      "main": [
+        []
+      ]
+    },
+    "Extract Analysis Content": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Create Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {
+    "Idea Input Form": [
+      {
+        "json": {
+          "Idea Name": "The AI Biomarker Interpreter",
+          "Idea Summary": "An AI-powered health intelligence platform that ingests raw data from any testing provider (23andMe, Ancestry, blood labs) and converts complex medical jargon into simple, actionable daily protocols for diet, sleep, and performance. We don't sell tests; we sell the plan.\r\n",
+          "Target Industry": "Health Tech / Personal Health / Biotech",
+          "Target Audience": "Biohackers, fitness enthusiasts, people with chronic fatigue or digestion issues, and \"Data Rich, Insight Poor\" consumers who have test results but don't know what to do with them\r\n",
+          "Initial Pricing Thoughts": "",
+          "Known Competitors": "",
+          "submittedAt": "2026-02-02T16:21:22.950-05:00",
+          "formMode": "test"
+        }
+      }
+    ],
+    "Discover Competitors (Search 1)": [
+      {
+        "json": {
+          "id": "4c26b741-76dd-4d7c-9cf4-2cd74cea7cd0",
+          "model": "sonar",
+          "created": 1770067636,
+          "usage": {
+            "prompt_tokens": 146,
+            "completion_tokens": 74,
+            "total_tokens": 220,
+            "search_context_size": "low",
+            "cost": {
+              "input_tokens_cost": 0.00015,
+              "output_tokens_cost": 0.00007,
+              "request_cost": 0.005,
+              "total_cost": 0.00522
+            }
+          },
+          "citations": [
+            "https://www.galengrowth.com/healthtech-alpha-alternatives/",
+            "https://aimagazine.com/top10/top-10-ai-platforms-in-healthcare",
+            "https://innovaccer.com/blogs/top-10-healthcare-analytics-companies-to-watch-in-2025-for-innovation-growth",
+            "https://marketplace.aviahealth.com/product/76749/healthcare-ai/competitors/alternatives",
+            "https://www.praxisemr.com/top-ai-healthcare-systems.html",
+            "https://klasresearch.com/compare/healthcare-artificial-intelligence-data-science-solutions/375",
+            "https://medicalfuturist.com/top-artificial-intelligence-companies-in-healthcare"
+          ],
+          "search_results": [
+            {
+              "title": "Alternatives to HealthTech Alpha - Galen Growth",
+              "url": "https://www.galengrowth.com/healthtech-alpha-alternatives/",
+              "date": "2025-09-15",
+              "last_updated": "2026-01-15",
+              "snippet": "Top HealthTech Alpha Alternatives at a Glance ; AlphaSense, Best for Document search across filings & expert calls, Stand-out Strength: Gen-AI summarisation + ...",
+              "source": "web"
+            },
+            {
+              "title": "Top 10: AI Platforms in Healthcare - AI Magazine",
+              "url": "https://aimagazine.com/top10/top-10-ai-platforms-in-healthcare",
+              "date": "2026-01-21",
+              "snippet": "Top 10: AI Platforms in Healthcare · 10. Butterfly Network · 9. Caption AI (Caption Health, part of GE HealthCare) · 8. PathAI · 7. Merative · 6.",
+              "source": "web"
+            },
+            {
+              "title": "Top 10 Healthcare Analytics Companies to Watch in 2025 - Innovaccer",
+              "url": "https://innovaccer.com/blogs/top-10-healthcare-analytics-companies-to-watch-in-2025-for-innovation-growth",
+              "date": "2025-01-22",
+              "last_updated": "2026-02-02",
+              "snippet": "Discover the top healthcare analytics companies driving AI-powered insights, cost efficiency, and better patient outcomes in 2025.",
+              "source": "web"
+            },
+            {
+              "title": "Top 10 healthcare.ai Alternatives & Competitors",
+              "url": "https://marketplace.aviahealth.com/product/76749/healthcare-ai/competitors/alternatives",
+              "date": "2025-04-15",
+              "last_updated": "2026-01-20",
+              "snippet": "Top 10 healthcare.ai Alternatives & Competitors. Health Catalyst provides advanced data and analytics technology and services to healthcare organizations, ...",
+              "source": "web"
+            },
+            {
+              "title": "Top AI Healthcare Systems (2026) — Comparison & Key Takeaways",
+              "url": "https://www.praxisemr.com/top-ai-healthcare-systems.html",
+              "date": "2026-01-02",
+              "last_updated": "2026-02-01",
+              "snippet": "Discover the peak of the AI Healthcare. Praxis EMR, IBM Watson, Google Health, Microsoft, Amazon, Augmedix, Path AI, Butterfly Network, Arterys, and Atomwise.",
+              "source": "web"
+            },
+            {
+              "title": "Healthcare Artificial Intelligence: Data Science Solutions",
+              "url": "https://klasresearch.com/compare/healthcare-artificial-intelligence-data-science-solutions/375",
+              "date": "2025-12-29",
+              "last_updated": "2025-12-30",
+              "snippet": "Compare Healthcare Artificial Intelligence: Data Science Solutions Software | ClosedLoop, DataRobot, Epic, Health Catalyst, Lightbeam, N1 Health, ...",
+              "source": "web"
+            },
+            {
+              "title": "Top Artificial Intelligence Companies in Healthcare",
+              "url": "https://medicalfuturist.com/top-artificial-intelligence-companies-in-healthcare",
+              "date": "2025-12-16",
+              "last_updated": "2025-12-27",
+              "snippet": "Read about the biggest artificial intelligence companies in healthcare ranging from start-ups to tech giants to keep an eye on in the future.",
+              "source": "web"
+            }
+          ],
+          "object": "chat.completion",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "[{\"name\":\"InsideTracker\",\"url\":\"https://www.insidetracker.com\"},{\"name\":\"Levels\",\"url\":\"https://www.levelshealth.com\"},{\"name\":\"Whoop\",\"url\":\"https://www.whoop.com\"},{\"name\":\"Oura\",\"url\":\"https://ouraring.com\"},{\"name\":\"Function Health\",\"url\":\"https://www.functionhealth.com\"}]"
+              },
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "stop"
+            }
+          ]
+        }
+      }
+    ],
+    "Discover Competitors (Search 2)": [
+      {
+        "json": {
+          "id": "c1bd11a9-bbc7-4126-8962-bab7ddd3c2ee",
+          "model": "sonar",
+          "created": 1770067638,
+          "usage": {
+            "prompt_tokens": 183,
+            "completion_tokens": 1,
+            "total_tokens": 184,
+            "search_context_size": "low",
+            "cost": {
+              "input_tokens_cost": 0.00018,
+              "output_tokens_cost": 0,
+              "request_cost": 0.005,
+              "total_cost": 0.00518
+            }
+          },
+          "citations": [
+            "https://www.eventbrite.com/e/limitless-health-2026-wellness-biohacking-experience-tickets-1965895925634",
+            "https://blog.mean.ceo/biohacking-for-startups/",
+            "https://www.thegolnetwork.com/events/biohacking-vitality-2026",
+            "https://vendelux.com/blog/healthtech-conferences/",
+            "https://lightit.io/community/events"
+          ],
+          "search_results": [
+            {
+              "title": "limitless health 2026 wellness & biohacking experience - Eventbrite",
+              "url": "https://www.eventbrite.com/e/limitless-health-2026-wellness-biohacking-experience-tickets-1965895925634",
+              "date": "2025-12-11",
+              "last_updated": "2026-01-30",
+              "snippet": "LIMITLESS HEALTH 2026 is a 2-day immersive bio-hacking experience designed for entrepreneurs, health-conscious professionals, and leaders who want to elevate ...",
+              "source": "web"
+            },
+            {
+              "title": "Biohacking For Startups | 2026 EDITION - Female Entrepreneurs",
+              "url": "https://blog.mean.ceo/biohacking-for-startups/",
+              "date": "2026-01-30",
+              "last_updated": "2026-01-31",
+              "snippet": "Biohacking leverages science, technology, and data to optimize physical and mental performance, perfect for entrepreneurs aiming to boost ...",
+              "source": "web"
+            },
+            {
+              "title": "BIOHACKING +VITALITY 2026 - The GOL Network",
+              "url": "https://www.thegolnetwork.com/events/biohacking-vitality-2026",
+              "date": "2026-01-23",
+              "last_updated": "2026-01-30",
+              "snippet": "REGISTER NOW for an immersive two-day biohacking experience designed to help you RESET, FUEL, OPTIMIZE, and ALIGN your health, energy, and nervous system!",
+              "source": "web"
+            },
+            {
+              "title": "HealthTech Conferences: Top Health Technology Events for 2026",
+              "url": "https://vendelux.com/blog/healthtech-conferences/",
+              "date": "2025-12-15",
+              "snippet": "Explore top HealthTech conferences in 2026 covering digital health, AI, virtual care, health data, and healthcare transformation.",
+              "source": "web"
+            },
+            {
+              "title": "Top Health Tech Conferences 2026 - Light-it",
+              "url": "https://lightit.io/community/events",
+              "date": "2026-01-01",
+              "last_updated": "2026-01-30",
+              "snippet": "Immerse yourself in cutting-edge health optimization and longevity innovations alongside passionate biohackers. Society of Hospital Medicine – SHM Converge 2026.",
+              "source": "web"
+            }
+          ],
+          "object": "chat.completion",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "[]"
+              },
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "stop"
+            }
+          ]
+        }
+      }
+    ],
+    "Merge Competitor Results": [
+      {
+        "json": {
+          "id": "4c26b741-76dd-4d7c-9cf4-2cd74cea7cd0",
+          "model": "sonar",
+          "created": 1770067636,
+          "usage": {
+            "prompt_tokens": 146,
+            "completion_tokens": 74,
+            "total_tokens": 220,
+            "search_context_size": "low",
+            "cost": {
+              "input_tokens_cost": 0.00015,
+              "output_tokens_cost": 0.00007,
+              "request_cost": 0.005,
+              "total_cost": 0.00522
+            }
+          },
+          "citations": [
+            "https://www.galengrowth.com/healthtech-alpha-alternatives/",
+            "https://aimagazine.com/top10/top-10-ai-platforms-in-healthcare",
+            "https://innovaccer.com/blogs/top-10-healthcare-analytics-companies-to-watch-in-2025-for-innovation-growth",
+            "https://marketplace.aviahealth.com/product/76749/healthcare-ai/competitors/alternatives",
+            "https://www.praxisemr.com/top-ai-healthcare-systems.html",
+            "https://klasresearch.com/compare/healthcare-artificial-intelligence-data-science-solutions/375",
+            "https://medicalfuturist.com/top-artificial-intelligence-companies-in-healthcare"
+          ],
+          "search_results": [
+            {
+              "title": "Alternatives to HealthTech Alpha - Galen Growth",
+              "url": "https://www.galengrowth.com/healthtech-alpha-alternatives/",
+              "date": "2025-09-15",
+              "last_updated": "2026-01-15",
+              "snippet": "Top HealthTech Alpha Alternatives at a Glance ; AlphaSense, Best for Document search across filings & expert calls, Stand-out Strength: Gen-AI summarisation + ...",
+              "source": "web"
+            },
+            {
+              "title": "Top 10: AI Platforms in Healthcare - AI Magazine",
+              "url": "https://aimagazine.com/top10/top-10-ai-platforms-in-healthcare",
+              "date": "2026-01-21",
+              "snippet": "Top 10: AI Platforms in Healthcare · 10. Butterfly Network · 9. Caption AI (Caption Health, part of GE HealthCare) · 8. PathAI · 7. Merative · 6.",
+              "source": "web"
+            },
+            {
+              "title": "Top 10 Healthcare Analytics Companies to Watch in 2025 - Innovaccer",
+              "url": "https://innovaccer.com/blogs/top-10-healthcare-analytics-companies-to-watch-in-2025-for-innovation-growth",
+              "date": "2025-01-22",
+              "last_updated": "2026-02-02",
+              "snippet": "Discover the top healthcare analytics companies driving AI-powered insights, cost efficiency, and better patient outcomes in 2025.",
+              "source": "web"
+            },
+            {
+              "title": "Top 10 healthcare.ai Alternatives & Competitors",
+              "url": "https://marketplace.aviahealth.com/product/76749/healthcare-ai/competitors/alternatives",
+              "date": "2025-04-15",
+              "last_updated": "2026-01-20",
+              "snippet": "Top 10 healthcare.ai Alternatives & Competitors. Health Catalyst provides advanced data and analytics technology and services to healthcare organizations, ...",
+              "source": "web"
+            },
+            {
+              "title": "Top AI Healthcare Systems (2026) — Comparison & Key Takeaways",
+              "url": "https://www.praxisemr.com/top-ai-healthcare-systems.html",
+              "date": "2026-01-02",
+              "last_updated": "2026-02-01",
+              "snippet": "Discover the peak of the AI Healthcare. Praxis EMR, IBM Watson, Google Health, Microsoft, Amazon, Augmedix, Path AI, Butterfly Network, Arterys, and Atomwise.",
+              "source": "web"
+            },
+            {
+              "title": "Healthcare Artificial Intelligence: Data Science Solutions",
+              "url": "https://klasresearch.com/compare/healthcare-artificial-intelligence-data-science-solutions/375",
+              "date": "2025-12-29",
+              "last_updated": "2025-12-30",
+              "snippet": "Compare Healthcare Artificial Intelligence: Data Science Solutions Software | ClosedLoop, DataRobot, Epic, Health Catalyst, Lightbeam, N1 Health, ...",
+              "source": "web"
+            },
+            {
+              "title": "Top Artificial Intelligence Companies in Healthcare",
+              "url": "https://medicalfuturist.com/top-artificial-intelligence-companies-in-healthcare",
+              "date": "2025-12-16",
+              "last_updated": "2025-12-27",
+              "snippet": "Read about the biggest artificial intelligence companies in healthcare ranging from start-ups to tech giants to keep an eye on in the future.",
+              "source": "web"
+            }
+          ],
+          "object": "chat.completion",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "[{\"name\":\"InsideTracker\",\"url\":\"https://www.insidetracker.com\"},{\"name\":\"Levels\",\"url\":\"https://www.levelshealth.com\"},{\"name\":\"Whoop\",\"url\":\"https://www.whoop.com\"},{\"name\":\"Oura\",\"url\":\"https://ouraring.com\"},{\"name\":\"Function Health\",\"url\":\"https://www.functionhealth.com\"}]"
+              },
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "stop"
+            }
+          ]
+        }
+      },
+      {
+        "json": {
+          "id": "c1bd11a9-bbc7-4126-8962-bab7ddd3c2ee",
+          "model": "sonar",
+          "created": 1770067638,
+          "usage": {
+            "prompt_tokens": 183,
+            "completion_tokens": 1,
+            "total_tokens": 184,
+            "search_context_size": "low",
+            "cost": {
+              "input_tokens_cost": 0.00018,
+              "output_tokens_cost": 0,
+              "request_cost": 0.005,
+              "total_cost": 0.00518
+            }
+          },
+          "citations": [
+            "https://www.eventbrite.com/e/limitless-health-2026-wellness-biohacking-experience-tickets-1965895925634",
+            "https://blog.mean.ceo/biohacking-for-startups/",
+            "https://www.thegolnetwork.com/events/biohacking-vitality-2026",
+            "https://vendelux.com/blog/healthtech-conferences/",
+            "https://lightit.io/community/events"
+          ],
+          "search_results": [
+            {
+              "title": "limitless health 2026 wellness & biohacking experience - Eventbrite",
+              "url": "https://www.eventbrite.com/e/limitless-health-2026-wellness-biohacking-experience-tickets-1965895925634",
+              "date": "2025-12-11",
+              "last_updated": "2026-01-30",
+              "snippet": "LIMITLESS HEALTH 2026 is a 2-day immersive bio-hacking experience designed for entrepreneurs, health-conscious professionals, and leaders who want to elevate ...",
+              "source": "web"
+            },
+            {
+              "title": "Biohacking For Startups | 2026 EDITION - Female Entrepreneurs",
+              "url": "https://blog.mean.ceo/biohacking-for-startups/",
+              "date": "2026-01-30",
+              "last_updated": "2026-01-31",
+              "snippet": "Biohacking leverages science, technology, and data to optimize physical and mental performance, perfect for entrepreneurs aiming to boost ...",
+              "source": "web"
+            },
+            {
+              "title": "BIOHACKING +VITALITY 2026 - The GOL Network",
+              "url": "https://www.thegolnetwork.com/events/biohacking-vitality-2026",
+              "date": "2026-01-23",
+              "last_updated": "2026-01-30",
+              "snippet": "REGISTER NOW for an immersive two-day biohacking experience designed to help you RESET, FUEL, OPTIMIZE, and ALIGN your health, energy, and nervous system!",
+              "source": "web"
+            },
+            {
+              "title": "HealthTech Conferences: Top Health Technology Events for 2026",
+              "url": "https://vendelux.com/blog/healthtech-conferences/",
+              "date": "2025-12-15",
+              "snippet": "Explore top HealthTech conferences in 2026 covering digital health, AI, virtual care, health data, and healthcare transformation.",
+              "source": "web"
+            },
+            {
+              "title": "Top Health Tech Conferences 2026 - Light-it",
+              "url": "https://lightit.io/community/events",
+              "date": "2026-01-01",
+              "last_updated": "2026-01-30",
+              "snippet": "Immerse yourself in cutting-edge health optimization and longevity innovations alongside passionate biohackers. Society of Hospital Medicine – SHM Converge 2026.",
+              "source": "web"
+            }
+          ],
+          "object": "chat.completion",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "[]"
+              },
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "stop"
+            }
+          ]
+        }
+      }
+    ],
+    "Parse & Dedupe Competitors": [
+      {
+        "json": {
+          "competitorName": "InsideTracker",
+          "competitorUrl": "https://www.insidetracker.com",
+          "ideaName": "The AI Biomarker Interpreter",
+          "ideaSummary": "An AI-powered health intelligence platform that ingests raw data from any testing provider (23andMe, Ancestry, blood labs) and converts complex medical jargon into simple, actionable daily protocols for diet, sleep, and performance. We don't sell tests; we sell the plan.\r\n",
+          "targetIndustry": "Health Tech / Personal Health / Biotech",
+          "targetAudience": "Biohackers, fitness enthusiasts, people with chronic fatigue or digestion issues, and \"Data Rich, Insight Poor\" consumers who have test results but don't know what to do with them\r\n",
+          "pricingThoughts": "",
+          "knownCompetitors": ""
+        }
+      },
+      {
+        "json": {
+          "competitorName": "Levels",
+          "competitorUrl": "https://www.levelshealth.com",
+          "ideaName": "The AI Biomarker Interpreter",
+          "ideaSummary": "An AI-powered health intelligence platform that ingests raw data from any testing provider (23andMe, Ancestry, blood labs) and converts complex medical jargon into simple, actionable daily protocols for diet, sleep, and performance. We don't sell tests; we sell the plan.\r\n",
+          "targetIndustry": "Health Tech / Personal Health / Biotech",
+          "targetAudience": "Biohackers, fitness enthusiasts, people with chronic fatigue or digestion issues, and \"Data Rich, Insight Poor\" consumers who have test results but don't know what to do with them\r\n",
+          "pricingThoughts": "",
+          "knownCompetitors": ""
+        }
+      },
+      {
+        "json": {
+          "competitorName": "Whoop",
+          "competitorUrl": "https://www.whoop.com",
+          "ideaName": "The AI Biomarker Interpreter",
+          "ideaSummary": "An AI-powered health intelligence platform that ingests raw data from any testing provider (23andMe, Ancestry, blood labs) and converts complex medical jargon into simple, actionable daily protocols for diet, sleep, and performance. We don't sell tests; we sell the plan.\r\n",
+          "targetIndustry": "Health Tech / Personal Health / Biotech",
+          "targetAudience": "Biohackers, fitness enthusiasts, people with chronic fatigue or digestion issues, and \"Data Rich, Insight Poor\" consumers who have test results but don't know what to do with them\r\n",
+          "pricingThoughts": "",
+          "knownCompetitors": ""
+        }
+      }
+    ],
+    "Research Pricing": [
+      {
+        "json": {
+          "id": "d2b1bffc-f6ac-4450-8f86-85d82380c110",
+          "model": "sonar",
+          "created": 1770070536,
+          "usage": {
+            "prompt_tokens": 64,
+            "completion_tokens": 473,
+            "total_tokens": 537,
+            "search_context_size": "low",
+            "cost": {
+              "input_tokens_cost": 0.00006,
+              "output_tokens_cost": 0.00047,
+              "request_cost": 0.005,
+              "total_cost": 0.00554
+            }
+          },
+          "citations": [
+            "https://store.insidetracker.com/collections/all-plans-except-bundles-and-gift-cards",
+            "https://store.insidetracker.com/collections/discount-eligible-subscriptions-and-products-may-2024",
+            "https://store.insidetracker.com/collections/all-plans-all-add-ons-no-gift-cards",
+            "https://store.insidetracker.com/products/insidetracker-membership",
+            "https://store.insidetracker.com/collections/all-plans-except-bundles-and-gift-cards/blood-test-included",
+            "https://crowncounseling.com/reviews/insidetracker-review-and-alternative/",
+            "https://www.innerbody.com/insidetracker-review",
+            "https://info.insidetracker.com/subscription",
+            "https://store.insidetracker.com/collections/compare-plans-page",
+            "https://www.truemed.com/shop/products/insidetracker-insidetracker-membership"
+          ],
+          "search_results": [
+            {
+              "title": "All Plans EXCEPT Bundles and Gift Cards - InsideTracker",
+              "url": "https://store.insidetracker.com/collections/all-plans-except-bundles-and-gift-cards",
+              "date": "2025-08-12",
+              "last_updated": "2025-12-28",
+              "snippet": "Membership (Non-Renewing) · from $149.00 ; DNA Kit · $249.00 ; InnerAge 2.0 · from $99.00 ; Ultimate — InsideTracker Partner · from $489.00 ; Upgrade with InnerAge 2.0.",
+              "source": "web"
+            },
+            {
+              "title": "Discount eligible subscription and products - InsideTracker",
+              "url": "https://store.insidetracker.com/collections/discount-eligible-subscriptions-and-products-may-2024",
+              "date": "2022-09-06",
+              "last_updated": "2025-06-08",
+              "snippet": "InsideTracker Membership · $149.00 ; Membership (Non-Renewing) · from $149.00 ; DNA Kit · $249.00 ; InnerAge 2.0 · from $99.00 ; Ultimate test · from $340.00.",
+              "source": "web"
+            },
+            {
+              "title": "All plans, all add-ons (no gift cards) - InsideTracker",
+              "url": "https://store.insidetracker.com/collections/all-plans-all-add-ons-no-gift-cards",
+              "date": "2022-09-06",
+              "last_updated": "2025-05-08",
+              "snippet": "Membership (Non-Renewing) · from $149.00 ; DNA Kit · $249.00 ; InnerAge 2.0 · from $99.00 ; Ultimate — InsideTracker Partner · from $489.00 ; Upgrade with InnerAge 2.0.",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker Membership",
+              "url": "https://store.insidetracker.com/products/insidetracker-membership",
+              "date": "2024-05-06",
+              "last_updated": "2025-10-28",
+              "snippet": "You'll monitor all your information in one place and follow a personalized plan for peak health. Membership renews annually at the full price of $149.",
+              "source": "web"
+            },
+            {
+              "title": "All Plans EXCEPT Bundles and Gift Cards - InsideTracker",
+              "url": "https://store.insidetracker.com/collections/all-plans-except-bundles-and-gift-cards/blood-test-included",
+              "date": "2022-09-06",
+              "last_updated": "2025-06-15",
+              "snippet": "InnerAge 2.0 · from $99.00 ; Ultimate — InsideTracker Partner · from $489.00 ; Ultimate — Virginia High Performance · from $540.00 ; Ultimate x Fitness SF · from ...",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker Review (and Alternative) - Crown Counseling",
+              "url": "https://crowncounseling.com/reviews/insidetracker-review-and-alternative/",
+              "date": "2025-11-12",
+              "last_updated": "2026-02-02",
+              "snippet": "Outlive: $499-$999/year all-inclusive with blood testing, AI insights, coaching, and supplements. InsideTracker: $149-$1,781/year for testing ...",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker Review | Are these health tests legit? [2026] - Innerbody",
+              "url": "https://www.innerbody.com/insidetracker-review",
+              "date": "2023-12-27",
+              "last_updated": "2026-01-31",
+              "snippet": "One order of an Ultimate Plan costs $699, and you can add on a DNA test, InnerAge 2.0, previous blood or DNA results upload, or a mobile blood ...",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker Membership",
+              "url": "https://info.insidetracker.com/subscription",
+              "date": "2000-01-01",
+              "last_updated": "2025-12-26",
+              "snippet": "We just launched a new pricing structure that will save you $210 on your first blood test. And when you're ready for follow-up testing, you'll save again!",
+              "source": "web"
+            },
+            {
+              "title": "Compare Plans Page - InsideTracker",
+              "url": "https://store.insidetracker.com/collections/compare-plans-page",
+              "last_updated": "2025-08-24",
+              "snippet": "Skip To Text. InsideTracker | Live Healthier Longer. Plans · Tour · Science · InsideGuide · Testimonials · Support · Shop Now Log In Cart Login Shop Now.",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker Membership - HSA/FSA Eligible | Truemed",
+              "url": "https://www.truemed.com/shop/products/insidetracker-insidetracker-membership",
+              "date": "2022-01-01",
+              "last_updated": "2026-02-02",
+              "snippet": "InsideTracker blends blood, DNA & fitness data to give personalized health insights, scores & plans. Shop now and save with your HSA/FSA.",
+              "source": "web"
+            }
+          ],
+          "object": "chat.completion",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "InsideTracker offers a **tiered pricing structure** ranging from **$149 to $1,781 per year**, with separate costs for blood tests, DNA testing, and add-on features[6].\n\n## Core Membership Plans\n\n**InsideTracker Membership** costs **$149 annually** and renews at the full price each year[4]. This base membership allows you to upload existing blood test results, sync fitness tracker data, and access personalized recommendations without purchasing new tests[8].\n\n## Blood Test Plans\n\nInsideTracker offers several blood test options at different price points[1][2][3]:\n\n- **InnerAge 2.0**: from **$99.00** (biological age assessment)[1]\n- **Ultimate test**: from **$340.00**[2]\n- **Compete**: from **$349.00**[3]\n- **Ultimate — InsideTracker Partner**: from **$489.00**[1]\n- **Ultimate x Innovative Fitness**: from **$413.00**[5]\n- **Ultimate — Virginia High Performance**: from **$540.00**[1]\n- **Ultimate x Fitness SF Follow-Up**: from **$299.00**[5]\n\nOne source notes that a single Ultimate Plan order costs **$699**[7], though this may reflect bundled pricing or current promotions.\n\n## Additional Costs and Add-Ons\n\n- **DNA Kit**: **$249.00**[1]\n- **Upgrade with InnerAge 2.0**: **$99.00**[1]\n- **Ultimate Upgrade**: **$90.00**[1]\n- **Upgrade with Mobile Blood Draw**: **$119.00**[1]\n\n## Hidden Costs and Upsells\n\nInsideTracker recommends repeating Ultimate Plan testing every three months for ongoing monitoring, which could result in approximately **$2,681–$3,000 annually** with the 4-pack bundle option[7]. Supplements and additional support features are sold separately at **$600–$1,200 per year**[6], and the platform offers various add-on health features like hormone marker testing[8].\n\nThe overall annual cost can reach **$1,905–$2,981+ when including supplements and additional services**[6], significantly higher than the base membership price."
+              },
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "stop"
+            }
+          ]
+        }
+      }
+    ],
+    "Research Features": [
+      {
+        "json": {
+          "id": "7b73f9af-59ef-4222-b038-ffccd075a9b2",
+          "model": "sonar",
+          "created": 1770070544,
+          "usage": {
+            "prompt_tokens": 66,
+            "completion_tokens": 600,
+            "total_tokens": 666,
+            "search_context_size": "low",
+            "cost": {
+              "input_tokens_cost": 0.00007,
+              "output_tokens_cost": 0.0006,
+              "request_cost": 0.005,
+              "total_cost": 0.00567
+            }
+          },
+          "citations": [
+            "https://crowncounseling.com/reviews/insidetracker-review-and-alternative/",
+            "https://blog.insidetracker.com/3-new-insidetracker-features",
+            "https://blog.insidetracker.com/insidetracker-membership-benefits",
+            "https://www.innerbody.com/insidetracker-review",
+            "https://mynucleus.com/blog/insidetracker-review",
+            "https://www.nutritioninsight.com/news/insidetracker-personalized-nutrition-technology-ai-wearable.html",
+            "https://www.mygenefood.com/blog/my-inside-tracker-review/",
+            "https://www.insidetracker.com",
+            "https://www.insidetracker.com/tour",
+            "https://info.insidetracker.com/hubfs/SALES%20ENABLEMENT%20-%20CURRENT/InsideTracker%20Answers%20to%20All%20Your%20Questions%20eBook%202.24.pdf"
+          ],
+          "search_results": [
+            {
+              "title": "InsideTracker Review (and Alternative) - Crown Counseling",
+              "url": "https://crowncounseling.com/reviews/insidetracker-review-and-alternative/",
+              "date": "2025-11-12",
+              "last_updated": "2026-02-02",
+              "snippet": "InsideTracker is a personalized health analytics platform that uses blood biomarkers, DNA analysis, and fitness tracker data to provide ...",
+              "source": "web"
+            },
+            {
+              "title": "3 New Reasons to Join InsideTracker - The InsideGuide",
+              "url": "https://blog.insidetracker.com/3-new-insidetracker-features",
+              "date": "2025-08-01",
+              "last_updated": "2025-12-13",
+              "snippet": "A new membership plan that makes it easier to track your health over time. It lets you upload unlimited blood results from your doctor and shaves hundreds of ...",
+              "source": "web"
+            },
+            {
+              "title": "How an InsideTracker Membership Uses Data to Add Healthy Years ...",
+              "url": "https://blog.insidetracker.com/insidetracker-membership-benefits",
+              "date": "2025-11-25",
+              "last_updated": "2026-01-29",
+              "snippet": "What you get as an InsideTracker Member · Optimal zones for every marker · Healthspan Categories · Personalized recommendations · Action Plan.",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker Review | Are these health tests legit? [2026] - Innerbody",
+              "url": "https://www.innerbody.com/insidetracker-review",
+              "date": "2023-12-27",
+              "last_updated": "2026-01-31",
+              "snippet": "InsideTracker is a fairly comprehensive service that provides you direct access to the science of your own body through blood and DNA testing.",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker review: Should you rely on it for health and fitness ...",
+              "url": "https://mynucleus.com/blog/insidetracker-review",
+              "date": "2024-09-29",
+              "last_updated": "2026-02-01",
+              "snippet": "This platform uses your blood, DNA, and lifestyle data to determine how your health is genetically predisposed and pinpoint scientifically- ...",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker scales personalized wellness insights for broader ...",
+              "url": "https://www.nutritioninsight.com/news/insidetracker-personalized-nutrition-technology-ai-wearable.html",
+              "date": "2026-01-08",
+              "last_updated": "2026-02-02",
+              "snippet": "The platform's model analyzes users' blood, DNA, nutrition, and lifestyle data, providing personalized recommendations (Image credit: ...",
+              "source": "web"
+            },
+            {
+              "title": "My InsideTracker Review: Breaking Down Pros and Cons - Gene Food",
+              "url": "https://www.mygenefood.com/blog/my-inside-tracker-review/",
+              "date": "2025-05-05",
+              "last_updated": "2026-01-26",
+              "snippet": "The app offers genetic and blood analysis. Users who do not have either source of data can test through Inside Tracker. SNPs that form the risk ...",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker",
+              "url": "https://www.insidetracker.com",
+              "snippet": "Accurate blood biomarker analysis plus personalized interventions for nutrition, exercise and supplements to optimize wellness and fitness.",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker analyzes your blood biomarkers, DNA, wearable data ...",
+              "url": "https://www.insidetracker.com/tour",
+              "last_updated": "2024-06-16",
+              "snippet": "InsideTracker measures blood biomarkers spanning 10 key pillars of healthspan, 38 DNA traits, and dozens of markers from wearable devices, providing ...",
+              "source": "web"
+            },
+            {
+              "title": "[PDF] Getting started guide - InsideTracker",
+              "url": "https://info.insidetracker.com/hubfs/SALES%20ENABLEMENT%20-%20CURRENT/InsideTracker%20Answers%20to%20All%20Your%20Questions%20eBook%202.24.pdf",
+              "last_updated": "2025-02-22",
+              "snippet": "By analyzing your body's biomarkers, InsideTracker delivers 10 precise scores across key areas of your healthspan, like heart health, metabolism, and cognition.",
+              "source": "web"
+            }
+          ],
+          "object": "chat.completion",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "**InsideTracker is a personalized health analytics platform that analyzes blood biomarkers, DNA, fitness tracker data, and lifestyle inputs to deliver science-backed recommendations for optimizing wellness, performance, and longevity.** It empowers users from elite athletes to aging adults by providing predictive insights like biological age (InnerAge) and actionable plans across nutrition, exercise, supplements, and habits.[1][3][5][8]\n\n### Core Product Offerings\nInsideTracker offers flexible membership tiers and testing options tailored to user needs and budgets:\n- **Blood Biomarker Testing**: Ultimate Plan analyzes 40-48+ biomarkers across 10 healthspan categories (e.g., metabolism, heart health, sleep, cognition, hormones), with options for individual category tests or uploading existing lab results (up to 48 biomarkers supported).[1][3][4][9]\n- **DNA Analysis**: Tests or uploads data for up to 261 gene variants or 38 DNA traits, focusing on genetic predispositions for health optimization.[4][5][9]\n- **Membership Plans**: Four tiers including data upload-only, full testing kits, and ongoing monitoring; includes dashboard access, adaptable action plans, recipe database, and check-in notifications with achievements.[1][3][4]\n- **Integrated Data Sources**: Syncs with wearables like Oura Ring, Fitbit, Garmin, Apple Health for real-time sleep, heart rate, steps, and activity data.[1][3][5]\n\n### Unique Features\n- **AI-Powered Terra Chatbot**: GPT-4-based tool trained on validated health data; accesses personal blood reports, profiles, and Healthspan scores for personalized answers (future expansions include DNA and tracker data).[2]\n- **InnerAge 2.0**: Proprietary biological age calculator using biomarkers and user data to predict health outcomes and enable social sharing.[1][2][4][5]\n- **Healthspan Categories and Scores**: 10 quantified scores (0-100) for areas like liver, kidney, thyroid, and longevity, with optimal zones and ProTips.[3][10]\n- **Healthspan Habit Report**: Weekly insights grading sleep, heart rate, steps, and habits from wearables to track progress.[2][3]\n- **Predictive Modeling and Action Plans**: Algorithms rooted in peer-reviewed research generate hyper-personalized recommendations, including Food Basket recipes by dietitians.[1][3][4][6]\n\n### What They're Known For\nInsideTracker stands out for its **strong scientific foundation** (founded by MIT and Tufts experts), HIPAA/SOC2 compliance, comprehensive biomarker coverage, wearable integration without requiring new devices, and focus on **healthspan extension** through data-driven longevity metrics like InnerAge.[1][3][5][6][7] Available primarily in the US and Canada, it emphasizes predictive, phenotype-adjusted insights over generic advice, with B2B scalability for broader reach.[1][5][6]"
+              },
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "stop"
+            }
+          ]
+        }
+      }
+    ],
+    "Research Weaknesses": [
+      {
+        "json": {
+          "id": "d242473c-4b49-48bb-921f-b2d9da083aec",
+          "model": "sonar",
+          "created": 1770070550,
+          "usage": {
+            "prompt_tokens": 76,
+            "completion_tokens": 494,
+            "total_tokens": 570,
+            "search_context_size": "low",
+            "cost": {
+              "input_tokens_cost": 0.00008,
+              "output_tokens_cost": 0.00049,
+              "request_cost": 0.005,
+              "total_cost": 0.00557
+            }
+          },
+          "citations": [
+            "https://apps.apple.com/us/app/insidetracker/id1501674631",
+            "https://crowncounseling.com/reviews/insidetracker-review-and-alternative/",
+            "https://www.mygenefood.com/blog/my-inside-tracker-review/",
+            "https://forum.slowtwitch.com/t/inside-tracker-scam/811325",
+            "https://terilynadams.com/insidetracker-review/",
+            "https://www.bbb.org/us/ma/cambridge/profile/computer-software/inside-tracker-0021-552385"
+          ],
+          "search_results": [
+            {
+              "title": "InsideTracker - App Store - Apple",
+              "url": "https://apps.apple.com/us/app/insidetracker/id1501674631",
+              "date": "2023-12-02",
+              "last_updated": "2025-10-15",
+              "snippet": "This app is 100% useless until they get around to fixing it. MORE. Developer Response. Hi Dr. Tech, Thank you so much for the review and feedback. It looks like ...",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker Review (and Alternative) - Crown Counseling",
+              "url": "https://crowncounseling.com/reviews/insidetracker-review-and-alternative/",
+              "date": "2025-11-12",
+              "last_updated": "2026-02-02",
+              "snippet": "InsideTracker offers good data analysis. Outlive offers complete health transformation. For less money, get AI insights, health coaching, ...",
+              "source": "web"
+            },
+            {
+              "title": "My InsideTracker Review: Breaking Down Pros and Cons - Gene Food",
+              "url": "https://www.mygenefood.com/blog/my-inside-tracker-review/",
+              "date": "2025-05-05",
+              "last_updated": "2026-01-26",
+              "snippet": "Inside Tracker is a trustworthy, well built app that allows users the ability to track their health in a personalized way over time with actionable, science ...",
+              "source": "web"
+            },
+            {
+              "title": "Inside tracker scam - Slowtwitch Forum",
+              "url": "https://forum.slowtwitch.com/t/inside-tracker-scam/811325",
+              "date": "2021-11-29",
+              "last_updated": "2025-09-05",
+              "snippet": "It's a scam in the sense that there is little useful information here as far as performance. maybe iron levels. I'd like to see the science behind it.",
+              "source": "web"
+            },
+            {
+              "title": "My InsideTracker Review after using it for 5 years",
+              "url": "https://terilynadams.com/insidetracker-review/",
+              "date": "2025-03-17",
+              "last_updated": "2025-12-11",
+              "snippet": "One thing I especially love about InsideTracker is all the charts. It makes it easy to identify trends or sudden changes. I also find the visual cue helpful and ...",
+              "source": "web"
+            },
+            {
+              "title": "Inside Tracker | BBB Business Profile | Better Business Bureau",
+              "url": "https://www.bbb.org/us/ma/cambridge/profile/computer-software/inside-tracker-0021-552385",
+              "date": "2022-04-25",
+              "last_updated": "2025-10-15",
+              "snippet": "Inside Tracker is NOT a BBB Accredited Business. To become accredited, a business must agree to BBB Standards for Trust and pass BBB's vetting process.",
+              "source": "web"
+            }
+          ],
+          "object": "chat.completion",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "**InsideTracker faces significant user complaints about app bugs, lack of implementation support, high costs, and generic recommendations that fail to deliver actionable value beyond basic blood test analysis.**\n\n### App and Usability Issues\nUsers report frequent technical problems that render the app unreliable:\n- The app becomes \"100% useless\" due to bugs preventing checklist completion, with slow or unresponsive support despite initial quick replies.[1]\n- Missing features include no FaceID/password persistence (forcing login every time), no offline mode (unusable on planes or hikes), and unchecked goals after logouts, eroding trust in progress tracking.[1]\n- Account setup glitches, like unclear login transitions requiring password resets, create minor but frustrating barriers.[3]\n\n### Lack of Support and Actionable Guidance\nA core limitation is delivering data without tools for real change:\n- Provides algorithm-only recommendations with **no AI coaching, human guidance, or accountability**, leaving users to implement diet, lifestyle, and supplement changes alone.[2]\n- **Generic supplement advice** requires self-sourcing and dosing, with no personalized delivery or ongoing tracking integration (e.g., no included wearables).[2]\n- Critics call it \"data without support,\" like a fitness assessment without a trainer—insights identify issues (e.g., low vitamin D) but offer no structured path forward.[2]\n- Time-intensive data entry for tracking, with diet advice lacking depth relative to the biomarkers analyzed.[3]\n\n### Cost and Value Concerns\nPricing draws heavy criticism for underwhelming returns:\n- Higher tiers cost up to **$1,781/year** for quarterly testing, seen as excessive given limited treatment options focused only on diet/lifestyle/supplements.[2]\n- Labeled a \"scam\" by some for promising personalized reports that feel like cut-and-paste internet advice, with little performance-relevant info (e.g., beyond basic iron levels).[4]\n- Frequent promo emails suggest desperation to retain users amid churn from unaddressed issues.[1]\n\n### Scientific and Feature Gaps\n- Limited transparency on genetic analysis, such as using few SNPs (e.g., one for lactose intolerance) without detailing others.[3]\n- Not BBB-accredited, failing trust standards despite HIPAA/SOC2 compliance claims.[6]\n\nThese frustrations highlight opportunities for competitors: integrated coaching, automated supplements, reliable apps, and affordable, transparent science-backed action plans.[1][2][3][4]"
+              },
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "stop"
+            }
+          ]
+        }
+      }
+    ],
+    "Merge Competitor Research": [
+      {
+        "json": {
+          "id": "d242473c-4b49-48bb-921f-b2d9da083aec",
+          "model": "sonar",
+          "created": 1770070550,
+          "usage": {
+            "prompt_tokens": 76,
+            "completion_tokens": 494,
+            "total_tokens": 570,
+            "search_context_size": "low",
+            "cost": {
+              "input_tokens_cost": 0.00008,
+              "output_tokens_cost": 0.00049,
+              "request_cost": 0.005,
+              "total_cost": 0.00557
+            }
+          },
+          "citations": [
+            "https://apps.apple.com/us/app/insidetracker/id1501674631",
+            "https://crowncounseling.com/reviews/insidetracker-review-and-alternative/",
+            "https://www.mygenefood.com/blog/my-inside-tracker-review/",
+            "https://forum.slowtwitch.com/t/inside-tracker-scam/811325",
+            "https://terilynadams.com/insidetracker-review/",
+            "https://www.bbb.org/us/ma/cambridge/profile/computer-software/inside-tracker-0021-552385",
+            "https://www.mygenefood.com/blog/my-inside-tracker-review/",
+            "https://www.insidetracker.com",
+            "https://www.insidetracker.com/tour",
+            "https://info.insidetracker.com/hubfs/SALES%20ENABLEMENT%20-%20CURRENT/InsideTracker%20Answers%20to%20All%20Your%20Questions%20eBook%202.24.pdf"
+          ],
+          "search_results": [
+            {
+              "title": "InsideTracker - App Store - Apple",
+              "url": "https://apps.apple.com/us/app/insidetracker/id1501674631",
+              "date": "2023-12-02",
+              "last_updated": "2025-10-15",
+              "snippet": "This app is 100% useless until they get around to fixing it. MORE. Developer Response. Hi Dr. Tech, Thank you so much for the review and feedback. It looks like ...",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker Review (and Alternative) - Crown Counseling",
+              "url": "https://crowncounseling.com/reviews/insidetracker-review-and-alternative/",
+              "date": "2025-11-12",
+              "last_updated": "2026-02-02",
+              "snippet": "InsideTracker offers good data analysis. Outlive offers complete health transformation. For less money, get AI insights, health coaching, ...",
+              "source": "web"
+            },
+            {
+              "title": "My InsideTracker Review: Breaking Down Pros and Cons - Gene Food",
+              "url": "https://www.mygenefood.com/blog/my-inside-tracker-review/",
+              "date": "2025-05-05",
+              "last_updated": "2026-01-26",
+              "snippet": "Inside Tracker is a trustworthy, well built app that allows users the ability to track their health in a personalized way over time with actionable, science ...",
+              "source": "web"
+            },
+            {
+              "title": "Inside tracker scam - Slowtwitch Forum",
+              "url": "https://forum.slowtwitch.com/t/inside-tracker-scam/811325",
+              "date": "2021-11-29",
+              "last_updated": "2025-09-05",
+              "snippet": "It's a scam in the sense that there is little useful information here as far as performance. maybe iron levels. I'd like to see the science behind it.",
+              "source": "web"
+            },
+            {
+              "title": "My InsideTracker Review after using it for 5 years",
+              "url": "https://terilynadams.com/insidetracker-review/",
+              "date": "2025-03-17",
+              "last_updated": "2025-12-11",
+              "snippet": "One thing I especially love about InsideTracker is all the charts. It makes it easy to identify trends or sudden changes. I also find the visual cue helpful and ...",
+              "source": "web"
+            },
+            {
+              "title": "Inside Tracker | BBB Business Profile | Better Business Bureau",
+              "url": "https://www.bbb.org/us/ma/cambridge/profile/computer-software/inside-tracker-0021-552385",
+              "date": "2022-04-25",
+              "last_updated": "2025-10-15",
+              "snippet": "Inside Tracker is NOT a BBB Accredited Business. To become accredited, a business must agree to BBB Standards for Trust and pass BBB's vetting process.",
+              "source": "web"
+            },
+            {
+              "title": "My InsideTracker Review: Breaking Down Pros and Cons - Gene Food",
+              "url": "https://www.mygenefood.com/blog/my-inside-tracker-review/",
+              "date": "2025-05-05",
+              "last_updated": "2026-01-26",
+              "snippet": "The app offers genetic and blood analysis. Users who do not have either source of data can test through Inside Tracker. SNPs that form the risk ...",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker",
+              "url": "https://www.insidetracker.com",
+              "date": "2000-01-01",
+              "last_updated": "2025-12-26",
+              "snippet": "Accurate blood biomarker analysis plus personalized interventions for nutrition, exercise and supplements to optimize wellness and fitness.",
+              "source": "web"
+            },
+            {
+              "title": "InsideTracker analyzes your blood biomarkers, DNA, wearable data ...",
+              "url": "https://www.insidetracker.com/tour",
+              "last_updated": "2024-06-16",
+              "snippet": "InsideTracker measures blood biomarkers spanning 10 key pillars of healthspan, 38 DNA traits, and dozens of markers from wearable devices, providing ...",
+              "source": "web"
+            },
+            {
+              "title": "[PDF] Getting started guide - InsideTracker",
+              "url": "https://info.insidetracker.com/hubfs/SALES%20ENABLEMENT%20-%20CURRENT/InsideTracker%20Answers%20to%20All%20Your%20Questions%20eBook%202.24.pdf",
+              "date": "2022-01-01",
+              "last_updated": "2025-02-22",
+              "snippet": "By analyzing your body's biomarkers, InsideTracker delivers 10 precise scores across key areas of your healthspan, like heart health, metabolism, and cognition.",
+              "source": "web"
+            }
+          ],
+          "object": "chat.completion",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "**InsideTracker faces significant user complaints about app bugs, lack of implementation support, high costs, and generic recommendations that fail to deliver actionable value beyond basic blood test analysis.**\n\n### App and Usability Issues\nUsers report frequent technical problems that render the app unreliable:\n- The app becomes \"100% useless\" due to bugs preventing checklist completion, with slow or unresponsive support despite initial quick replies.[1]\n- Missing features include no FaceID/password persistence (forcing login every time), no offline mode (unusable on planes or hikes), and unchecked goals after logouts, eroding trust in progress tracking.[1]\n- Account setup glitches, like unclear login transitions requiring password resets, create minor but frustrating barriers.[3]\n\n### Lack of Support and Actionable Guidance\nA core limitation is delivering data without tools for real change:\n- Provides algorithm-only recommendations with **no AI coaching, human guidance, or accountability**, leaving users to implement diet, lifestyle, and supplement changes alone.[2]\n- **Generic supplement advice** requires self-sourcing and dosing, with no personalized delivery or ongoing tracking integration (e.g., no included wearables).[2]\n- Critics call it \"data without support,\" like a fitness assessment without a trainer—insights identify issues (e.g., low vitamin D) but offer no structured path forward.[2]\n- Time-intensive data entry for tracking, with diet advice lacking depth relative to the biomarkers analyzed.[3]\n\n### Cost and Value Concerns\nPricing draws heavy criticism for underwhelming returns:\n- Higher tiers cost up to **$1,781/year** for quarterly testing, seen as excessive given limited treatment options focused only on diet/lifestyle/supplements.[2]\n- Labeled a \"scam\" by some for promising personalized reports that feel like cut-and-paste internet advice, with little performance-relevant info (e.g., beyond basic iron levels).[4]\n- Frequent promo emails suggest desperation to retain users amid churn from unaddressed issues.[1]\n\n### Scientific and Feature Gaps\n- Limited transparency on genetic analysis, such as using few SNPs (e.g., one for lactose intolerance) without detailing others.[3]\n- Not BBB-accredited, failing trust standards despite HIPAA/SOC2 compliance claims.[6]\n\nThese frustrations highlight opportunities for competitors: integrated coaching, automated supplements, reliable apps, and affordable, transparent science-backed action plans.[1][2][3][4]"
+              },
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        "binary": {}
+      }
+    ],
+    "Aggregate Research": [
+      {
+        "json": {
+          "competitorName": "InsideTracker",
+          "competitorUrl": "https://www.insidetracker.com",
+          "pricing": "InsideTracker offers a **tiered pricing structure** ranging from **$149 to $1,781 per year**, with separate costs for blood tests, DNA testing, and add-on features[6].\n\n## Core Membership Plans\n\n**InsideTracker Membership** costs **$149 annually** and renews at the full price each year[4]. This base membership allows you to upload existing blood test results, sync fitness tracker data, and access personalized recommendations without purchasing new tests[8].\n\n## Blood Test Plans\n\nInsideTracker offers several blood test options at different price points[1][2][3]:\n\n- **InnerAge 2.0**: from **$99.00** (biological age assessment)[1]\n- **Ultimate test**: from **$340.00**[2]\n- **Compete**: from **$349.00**[3]\n- **Ultimate — InsideTracker Partner**: from **$489.00**[1]\n- **Ultimate x Innovative Fitness**: from **$413.00**[5]\n- **Ultimate — Virginia High Performance**: from **$540.00**[1]\n- **Ultimate x Fitness SF Follow-Up**: from **$299.00**[5]\n\nOne source notes that a single Ultimate Plan order costs **$699**[7], though this may reflect bundled pricing or current promotions.\n\n## Additional Costs and Add-Ons\n\n- **DNA Kit**: **$249.00**[1]\n- **Upgrade with InnerAge 2.0**: **$99.00**[1]\n- **Ultimate Upgrade**: **$90.00**[1]\n- **Upgrade with Mobile Blood Draw**: **$119.00**[1]\n\n## Hidden Costs and Upsells\n\nInsideTracker recommends repeating Ultimate Plan testing every three months for ongoing monitoring, which could result in approximately **$2,681–$3,000 annually** with the 4-pack bundle option[7]. Supplements and additional support features are sold separately at **$600–$1,200 per year**[6], and the platform offers various add-on health features like hormone marker testing[8].\n\nThe overall annual cost can reach **$1,905–$2,981+ when including supplements and additional services**[6], significantly higher than the base membership price.",
+          "features": "**InsideTracker is a personalized health analytics platform that analyzes blood biomarkers, DNA, fitness tracker data, and lifestyle inputs to deliver science-backed recommendations for optimizing wellness, performance, and longevity.** It empowers users from elite athletes to aging adults by providing predictive insights like biological age (InnerAge) and actionable plans across nutrition, exercise, supplements, and habits.[1][3][5][8]\n\n### Core Product Offerings\nInsideTracker offers flexible membership tiers and testing options tailored to user needs and budgets:\n- **Blood Biomarker Testing**: Ultimate Plan analyzes 40-48+ biomarkers across 10 healthspan categories (e.g., metabolism, heart health, sleep, cognition, hormones), with options for individual category tests or uploading existing lab results (up to 48 biomarkers supported).[1][3][4][9]\n- **DNA Analysis**: Tests or uploads data for up to 261 gene variants or 38 DNA traits, focusing on genetic predispositions for health optimization.[4][5][9]\n- **Membership Plans**: Four tiers including data upload-only, full testing kits, and ongoing monitoring; includes dashboard access, adaptable action plans, recipe database, and check-in notifications with achievements.[1][3][4]\n- **Integrated Data Sources**: Syncs with wearables like Oura Ring, Fitbit, Garmin, Apple Health for real-time sleep, heart rate, steps, and activity data.[1][3][5]\n\n### Unique Features\n- **AI-Powered Terra Chatbot**: GPT-4-based tool trained on validated health data; accesses personal blood reports, profiles, and Healthspan scores for personalized answers (future expansions include DNA and tracker data).[2]\n- **InnerAge 2.0**: Proprietary biological age calculator using biomarkers and user data to predict health outcomes and enable social sharing.[1][2][4][5]\n- **Healthspan Categories and Scores**: 10 quantified scores (0-100) for areas like liver, kidney, thyroid, and longevity, with optimal zones and ProTips.[3][10]\n- **Healthspan Habit Report**: Weekly insights grading sleep, heart rate, steps, and habits from wearables to track progress.[2][3]\n- **Predictive Modeling and Action Plans**: Algorithms rooted in peer-reviewed research generate hyper-personalized recommendations, including Food Basket recipes by dietitians.[1][3][4][6]\n\n### What They're Known For\nInsideTracker stands out for its **strong scientific foundation** (founded by MIT and Tufts experts), HIPAA/SOC2 compliance, comprehensive biomarker coverage, wearable integration without requiring new devices, and focus on **healthspan extension** through data-driven longevity metrics like InnerAge.[1][3][5][6][7] Available primarily in the US and Canada, it emphasizes predictive, phenotype-adjusted insights over generic advice, with B2B scalability for broader reach.[1][5][6]",
+          "weaknesses": "**InsideTracker faces significant user complaints about app bugs, lack of implementation support, high costs, and generic recommendations that fail to deliver actionable value beyond basic blood test analysis.**\n\n### App and Usability Issues\nUsers report frequent technical problems that render the app unreliable:\n- The app becomes \"100% useless\" due to bugs preventing checklist completion, with slow or unresponsive support despite initial quick replies.[1]\n- Missing features include no FaceID/password persistence (forcing login every time), no offline mode (unusable on planes or hikes), and unchecked goals after logouts, eroding trust in progress tracking.[1]\n- Account setup glitches, like unclear login transitions requiring password resets, create minor but frustrating barriers.[3]\n\n### Lack of Support and Actionable Guidance\nA core limitation is delivering data without tools for real change:\n- Provides algorithm-only recommendations with **no AI coaching, human guidance, or accountability**, leaving users to implement diet, lifestyle, and supplement changes alone.[2]\n- **Generic supplement advice** requires self-sourcing and dosing, with no personalized delivery or ongoing tracking integration (e.g., no included wearables).[2]\n- Critics call it \"data without support,\" like a fitness assessment without a trainer—insights identify issues (e.g., low vitamin D) but offer no structured path forward.[2]\n- Time-intensive data entry for tracking, with diet advice lacking depth relative to the biomarkers analyzed.[3]\n\n### Cost and Value Concerns\nPricing draws heavy criticism for underwhelming returns:\n- Higher tiers cost up to **$1,781/year** for quarterly testing, seen as excessive given limited treatment options focused only on diet/lifestyle/supplements.[2]\n- Labeled a \"scam\" by some for promising personalized reports that feel like cut-and-paste internet advice, with little performance-relevant info (e.g., beyond basic iron levels).[4]\n- Frequent promo emails suggest desperation to retain users amid churn from unaddressed issues.[1]\n\n### Scientific and Feature Gaps\n- Limited transparency on genetic analysis, such as using few SNPs (e.g., one for lactose intolerance) without detailing others.[3]\n- Not BBB-accredited, failing trust standards despite HIPAA/SOC2 compliance claims.[6]\n\nThese frustrations highlight opportunities for competitors: integrated coaching, automated supplements, reliable apps, and affordable, transparent science-backed action plans.[1][2][3][4]",
+          "ideaName": "The AI Biomarker Interpreter",
+          "ideaSummary": "An AI-powered health intelligence platform that ingests raw data from any testing provider (23andMe, Ancestry, blood labs) and converts complex medical jargon into simple, actionable daily protocols for diet, sleep, and performance. We don't sell tests; we sell the plan.\r\n",
+          "targetIndustry": "Health Tech / Personal Health / Biotech",
+          "targetAudience": "Biohackers, fitness enthusiasts, people with chronic fatigue or digestion issues, and \"Data Rich, Insight Poor\" consumers who have test results but don't know what to do with them\r\n",
+          "pricingThoughts": "",
+          "knownCompetitors": ""
+        }
+      }
+    ],
+    "Collect All Research": [
+      {
+        "json": {
+          "ideaName": "The AI Biomarker Interpreter",
+          "ideaSummary": "An AI-powered health intelligence platform that ingests raw data from any testing provider (23andMe, Ancestry, blood labs) and converts complex medical jargon into simple, actionable daily protocols for diet, sleep, and performance. We don't sell tests; we sell the plan.\r\n",
+          "targetIndustry": "Health Tech / Personal Health / Biotech",
+          "targetAudience": "Biohackers, fitness enthusiasts, people with chronic fatigue or digestion issues, and \"Data Rich, Insight Poor\" consumers who have test results but don't know what to do with them\r\n",
+          "pricingThoughts": "",
+          "knownCompetitors": "",
+          "competitors": [
+            {
+              "name": "Whoop",
+              "url": "https://www.whoop.com",
+              "pricing": "**WHOOP offers three main membership tiers: WHOOP One ($199/year or $25/month), WHOOP Peak ($239/year or $30/month), and WHOOP Life ($359/year or $40/month), each including specific hardware like WHOOP 5.0 or WHOOP MG with a SuperKnit band, Waterproof Wireless PowerPack, lifetime warranty, and 24/7 support.**[1][3][5][6]\n\n### Pricing Tiers and Inclusions\n| Plan          | Hardware Included              | Annual Price | Monthly Price (Existing Customers) |\n|---------------|--------------------------------|--------------|------------------------------------|\n| **WHOOP One** | WHOOP 5.0 (14+ day battery) or WHOOP 4.0 (5 day battery) | $199        | $25                               |[1][6]\n| **WHOOP Peak**| WHOOP 5.0 (14+ day battery)   | $239        | $30                               |[1][3][5][6]\n| **WHOOP Life**| WHOOP MG (14+ day battery)    | $359        | $40                               |[1][3][6]\n\nPrices reflect updates as of September 25, 2025, with US rates stable but international prices (e.g., Canada, Australia) rising October 25, 2025 due to exchange rates.[1] Monthly billing is primarily for existing customers; new users default to annual commitments.[1][3]\n\n### Trials and Promotions\n- **1-month free trial**: Includes certified pre-owned WHOOP 5.0 for Peak membership (auto-renews to $239/year unless canceled).[2][5][6]\n- **Black Friday/Cyber Monday deals** (2025/2026 context): Discounts like $199 annual (save $40 from $239), 24-month at $359 (save $40 from $399), or up to 50% off with coupons (e.g., $18/month equivalent).[2] Family membership listed at $199/year in promo contexts.[2]\n\n### Hidden Costs and Upsells\n- **Auto-renewal**: Trials, annual, and 24-month plans renew at $239/year (Peak rate) unless changed; monthly option available post-trial.[2]\n- **Upgrades**: Free WHOOP 5.0 on Peak if >12 months remaining on prior membership; otherwise, one-time fee for hardware like WHOOP MG on Life (or extend to 12 months for no extra hardware cost).[4]\n- **Family plans**: $199/year referenced in deals, but standard details unclear—likely an upsell variant.[2]\n- **Restrictions**: Advanced features (e.g., Healthspan, Labs) have age, location, or health eligibility; no upfront device cost beyond membership, but add-ons like bands may apply.[5][6]\n- No shipping or activation fees mentioned; all plans include charger and warranty.[5][6]\n\nPricing synthesizes latest data (September 2025 onward); check Whoop.com for real-time regional adjustments.[1][3]",
+              "features": "**Whoop is a screenless, subscription-based wearable fitness and health coach designed for 24/7 wear, focusing on optimizing recovery, sleep, strain, and overall healthspan through continuous biometric monitoring and personalized app insights.**[3][4][6][8]\n\n### Core Product Offerings\nWhoop's lineup includes tiered hardware and subscription plans, all emphasizing minimalist, distraction-free design with no buttons or screen:\n- **WHOOP 5.0**: Flagship model with 14+ day battery life, core tracking for sleep, recovery, strain, steps, activities, and haptic alarms; includes Health Monitor for metrics like resting heart rate (RHR) and heart rate variability (HRV).[3][5][6]\n- **WHOOP Peak**: Adds Healthspan (pace of aging), real-time Stress Monitor, and health alerts.[3]\n- **WHOOP MG**: Premium tier with medical-grade features like daily Blood Pressure Insights (beta), Heart Screener (ECG), and on-demand AFib detection.[3][4]\n- **Accessories**: Waterproof Wireless PowerPack for on-the-go charging; WHOOP Body smart apparel for off-wrist wear.[3]\n\nThe companion app delivers daily scores (e.g., Recovery 0-100%, Strain based on heart rate intensity/duration) and AI coaching to guide training, rest, and habits.[2][4][6][7]\n\n### Key Capabilities and Tracking Features\nWhoop collects data every second via optical heart rate sensors, providing baselines for:\n- **Sleep**: All stages (light, deep/REM/SWS, awake) with disturbances; influences recovery score.[2][4][5]\n- **Recovery and Strain**: HRV, RHR trends; advises rest vs. exertion.[1][2][7][8]\n- **Heart Health**: Continuous heart rate, respiratory rate, stress; broadcasts to apps like Peloton/Strava.[1][3][5]\n- **Other Metrics**: Steps, activities (auto-detect), cycle/pregnancy tracking, hydration guidance.[3][4][5]\n- **Advanced Wellness**: Healthspan for longevity, Blood Pressure Insights from overnight data.[3][4]\n\n| Feature | Description | Available In |\n|---------|-------------|--------------|\n| **24/7 Monitoring** | Heart rate, HRV, sleep, strain, stress without interruptions.[3][6] | All models |\n| **Personalized Coaching** | Daily insights on readiness, habits, performance optimization.[4][6][7] | App (all) |\n| **Health Reports** | PDF exports of metrics (e.g., 30/180-day changes) for sharing.[1] | App |\n| **Integrations** | Broadcast HR to Peloton, Zwift, Garmin, etc.[1] | App |\n\n### Unique Features\n- **Screen-free Minimalism**: Prioritizes precision over notifications; tilt phone for stats view, all-time bests (e.g., max Strain, HRV range).[1][3][6]\n- **Holistic Focus**: Emphasizes recovery adaptation over step-counting; \"coach on your wrist\" for when to push/recover.[2][7][8]\n- **App-Exclusive Hidden Tools**: Silent haptic alarms, cycle phase insights, Health Monitor alerts.[1][3][5]\n\n### What Whoop is Known For\nWhoop excels as a recovery- and performance-optimizer for athletes/endurance users, delivering medical-grade insights (e.g., ECG/AFib in MG) via subscription (free trial available).[3][6] It's praised for actionable data on sleep/strain balance, longevity (Healthspan), and 24/7 wearability, distinguishing it from feature-heavy smartwatches.[2][6][7] Limitations include no standalone time display and required subscription for full access.[6][7]",
+              "weaknesses": "### Hardware and Design Limitations\nWhoop's hardware, including straps, bands, and external battery packs, is frequently criticized for being awkward, clunky to set up, and easy to lose, especially during travel, which drives up replacement costs as an upsell.[1] Users report the band gets wet from sweat or showers, requiring it to dry completely before reuse, unlike competitors like Fitbit or Oura that handle moisture better—this is a major frustration for workout-focused users.[1] Wearable boxer shorts suffer from poor sizing, finicky clipping when swapping with wristbands, and frequent loss of tracking (e.g., mid-night data gaps or complete failures), making them unreliable despite the \"out of sight\" appeal.[3][5]\n\n### Accuracy and Tracking Issues\nHeart rate (HR) accuracy remains a core weakness, with optical sensors producing \"fake strain,\" wild spikes (e.g., 150-160bpm while sedentary), and inconsistent readings during workouts, intervals, or weight training—often worse than competitors like Garmin chest straps or Apple Watch.[2][3][4][6] This cascades into flawed Strain, Recovery, Sleep, and step count metrics; users wish for a toggle to ignore erroneous spikes.[2][3] Sleep tracking is inaccurate for REM/deep stages, false sleep times, or total non-detection, particularly with boxers, and can't always be corrected in the app.[1][3] Strength training lacks progress tracking, progressive overload prompts, or trend analysis.[4]\n\n### App and Performance Complaints\nApp load times are slow, with delays of several minutes for sleep/strain results to \"catch up,\" frustrating users needing quick insights.[1] Some report drops in step counts, strain, and overall accuracy post-updates like 5.0 MG, though a minority view this positively.[2] Customer service is \"tricky\" but not outright bad.[2]\n\n### Cost and Subscription Drawbacks\nOngoing costs for bands, batteries, and replacements add up significantly beyond the subscription, positioning Whoop as premium-priced yet lagging in reliability compared to rivals offering broader features.[1][4] Inconsistent calibration (sometimes low, high, or spot-on) undermines trust for precise training users.[4]"
+            }
+          ],
+          "researchCompiled": "## Whoop\nURL: https://www.whoop.com\n\n### Pricing\n**WHOOP offers three main membership tiers: WHOOP One ($199/year or $25/month), WHOOP Peak ($239/year or $30/month), and WHOOP Life ($359/year or $40/month), each including specific hardware like WHOOP 5.0 or WHOOP MG with a SuperKnit band, Waterproof Wireless PowerPack, lifetime warranty, and 24/7 support.**[1][3][5][6]\n\n### Pricing Tiers and Inclusions\n| Plan          | Hardware Included              | Annual Price | Monthly Price (Existing Customers) |\n|---------------|--------------------------------|--------------|------------------------------------|\n| **WHOOP One** | WHOOP 5.0 (14+ day battery) or WHOOP 4.0 (5 day battery) | $199        | $25                               |[1][6]\n| **WHOOP Peak**| WHOOP 5.0 (14+ day battery)   | $239        | $30                               |[1][3][5][6]\n| **WHOOP Life**| WHOOP MG (14+ day battery)    | $359        | $40                               |[1][3][6]\n\nPrices reflect updates as of September 25, 2025, with US rates stable but international prices (e.g., Canada, Australia) rising October 25, 2025 due to exchange rates.[1] Monthly billing is primarily for existing customers; new users default to annual commitments.[1][3]\n\n### Trials and Promotions\n- **1-month free trial**: Includes certified pre-owned WHOOP 5.0 for Peak membership (auto-renews to $239/year unless canceled).[2][5][6]\n- **Black Friday/Cyber Monday deals** (2025/2026 context): Discounts like $199 annual (save $40 from $239), 24-month at $359 (save $40 from $399), or up to 50% off with coupons (e.g., $18/month equivalent).[2] Family membership listed at $199/year in promo contexts.[2]\n\n### Hidden Costs and Upsells\n- **Auto-renewal**: Trials, annual, and 24-month plans renew at $239/year (Peak rate) unless changed; monthly option available post-trial.[2]\n- **Upgrades**: Free WHOOP 5.0 on Peak if >12 months remaining on prior membership; otherwise, one-time fee for hardware like WHOOP MG on Life (or extend to 12 months for no extra hardware cost).[4]\n- **Family plans**: $199/year referenced in deals, but standard details unclear—likely an upsell variant.[2]\n- **Restrictions**: Advanced features (e.g., Healthspan, Labs) have age, location, or health eligibility; no upfront device cost beyond membership, but add-ons like bands may apply.[5][6]\n- No shipping or activation fees mentioned; all plans include charger and warranty.[5][6]\n\nPricing synthesizes latest data (September 2025 onward); check Whoop.com for real-time regional adjustments.[1][3]\n\n### Features\n**Whoop is a screenless, subscription-based wearable fitness and health coach designed for 24/7 wear, focusing on optimizing recovery, sleep, strain, and overall healthspan through continuous biometric monitoring and personalized app insights.**[3][4][6][8]\n\n### Core Product Offerings\nWhoop's lineup includes tiered hardware and subscription plans, all emphasizing minimalist, distraction-free design with no buttons or screen:\n- **WHOOP 5.0**: Flagship model with 14+ day battery life, core tracking for sleep, recovery, strain, steps, activities, and haptic alarms; includes Health Monitor for metrics like resting heart rate (RHR) and heart rate variability (HRV).[3][5][6]\n- **WHOOP Peak**: Adds Healthspan (pace of aging), real-time Stress Monitor, and health alerts.[3]\n- **WHOOP MG**: Premium tier with medical-grade features like daily Blood Pressure Insights (beta), Heart Screener (ECG), and on-demand AFib detection.[3][4]\n- **Accessories**: Waterproof Wireless PowerPack for on-the-go charging; WHOOP Body smart apparel for off-wrist wear.[3]\n\nThe companion app delivers daily scores (e.g., Recovery 0-100%, Strain based on heart rate intensity/duration) and AI coaching to guide training, rest, and habits.[2][4][6][7]\n\n### Key Capabilities and Tracking Features\nWhoop collects data every second via optical heart rate sensors, providing baselines for:\n- **Sleep**: All stages (light, deep/REM/SWS, awake) with disturbances; influences recovery score.[2][4][5]\n- **Recovery and Strain**: HRV, RHR trends; advises rest vs. exertion.[1][2][7][8]\n- **Heart Health**: Continuous heart rate, respiratory rate, stress; broadcasts to apps like Peloton/Strava.[1][3][5]\n- **Other Metrics**: Steps, activities (auto-detect), cycle/pregnancy tracking, hydration guidance.[3][4][5]\n- **Advanced Wellness**: Healthspan for longevity, Blood Pressure Insights from overnight data.[3][4]\n\n| Feature | Description | Available In |\n|---------|-------------|--------------|\n| **24/7 Monitoring** | Heart rate, HRV, sleep, strain, stress without interruptions.[3][6] | All models |\n| **Personalized Coaching** | Daily insights on readiness, habits, performance optimization.[4][6][7] | App (all) |\n| **Health Reports** | PDF exports of metrics (e.g., 30/180-day changes) for sharing.[1] | App |\n| **Integrations** | Broadcast HR to Peloton, Zwift, Garmin, etc.[1] | App |\n\n### Unique Features\n- **Screen-free Minimalism**: Prioritizes precision over notifications; tilt phone for stats view, all-time bests (e.g., max Strain, HRV range).[1][3][6]\n- **Holistic Focus**: Emphasizes recovery adaptation over step-counting; \"coach on your wrist\" for when to push/recover.[2][7][8]\n- **App-Exclusive Hidden Tools**: Silent haptic alarms, cycle phase insights, Health Monitor alerts.[1][3][5]\n\n### What Whoop is Known For\nWhoop excels as a recovery- and performance-optimizer for athletes/endurance users, delivering medical-grade insights (e.g., ECG/AFib in MG) via subscription (free trial available).[3][6] It's praised for actionable data on sleep/strain balance, longevity (Healthspan), and 24/7 wearability, distinguishing it from feature-heavy smartwatches.[2][6][7] Limitations include no standalone time display and required subscription for full access.[6][7]\n\n### Weaknesses\n### Hardware and Design Limitations\nWhoop's hardware, including straps, bands, and external battery packs, is frequently criticized for being awkward, clunky to set up, and easy to lose, especially during travel, which drives up replacement costs as an upsell.[1] Users report the band gets wet from sweat or showers, requiring it to dry completely before reuse, unlike competitors like Fitbit or Oura that handle moisture better—this is a major frustration for workout-focused users.[1] Wearable boxer shorts suffer from poor sizing, finicky clipping when swapping with wristbands, and frequent loss of tracking (e.g., mid-night data gaps or complete failures), making them unreliable despite the \"out of sight\" appeal.[3][5]\n\n### Accuracy and Tracking Issues\nHeart rate (HR) accuracy remains a core weakness, with optical sensors producing \"fake strain,\" wild spikes (e.g., 150-160bpm while sedentary), and inconsistent readings during workouts, intervals, or weight training—often worse than competitors like Garmin chest straps or Apple Watch.[2][3][4][6] This cascades into flawed Strain, Recovery, Sleep, and step count metrics; users wish for a toggle to ignore erroneous spikes.[2][3] Sleep tracking is inaccurate for REM/deep stages, false sleep times, or total non-detection, particularly with boxers, and can't always be corrected in the app.[1][3] Strength training lacks progress tracking, progressive overload prompts, or trend analysis.[4]\n\n### App and Performance Complaints\nApp load times are slow, with delays of several minutes for sleep/strain results to \"catch up,\" frustrating users needing quick insights.[1] Some report drops in step counts, strain, and overall accuracy post-updates like 5.0 MG, though a minority view this positively.[2] Customer service is \"tricky\" but not outright bad.[2]\n\n### Cost and Subscription Drawbacks\nOngoing costs for bands, batteries, and replacements add up significantly beyond the subscription, positioning Whoop as premium-priced yet lagging in reliability compared to rivals offering broader features.[1][4] Inconsistent calibration (sometimes low, high, or spot-on) undermines trust for precise training users.[4]"
+        }
+      }
+    ],
+    "AI Analysis & Synthesis": [
+      {
+        "json": {
+          "content": [
+            {
+              "type": "text",
+              "text": "# Comprehensive Idea Evaluation Document\n\n---\n\n## **Idea #1: The AI Biomarker Interpreter**\n\n**1. Summary**\nThe AI Biomarker Interpreter is a health intelligence platform that transforms raw biomarker data from any testing provider (23andMe, Ancestry, blood labs, wearables) into personalized, actionable daily protocols for diet, sleep, supplements, and performance optimization. Unlike companies that sell tests or hardware, we sell the interpretation layer—the \"so what do I actually do?\" that's missing from every lab result. We're the universal translator between your biology and your behavior.\n\n**The \"Hook\":**\n> *\"You've got the data. We've got the plan. Stop collecting biomarkers and start using them.\"*\n\nWe position ourselves as the **\"missing middle\"**—the intelligence layer that sits between expensive tests and actual lifestyle change. While competitors sell you more data, we sell you **clarity and action**. Your DNA report shouldn't collect dust. Your blood panel shouldn't confuse you. Your wearable data shouldn't just be pretty graphs. We turn biological complexity into a daily checklist you can actually follow.\n\n---\n\n## **2. Competitor Analysis**\n\n### **1. Competitor: WHOOP**\nhttps://www.whoop.com\n\n**The Model:** Hardware-as-a-subscription. WHOOP gives you a \"free\" wearable device but locks all insights behind a mandatory annual or monthly subscription. Revenue comes from recurring membership fees ($199-$359/year) plus accessory upsells (bands, chargers, apparel). They own the entire vertical: hardware, data collection, and interpretation—but only for their own device data.\n\n**The Price:**\n- **WHOOP One:** $199/year or $25/month (includes WHOOP 5.0 or 4.0)\n- **WHOOP Peak:** $239/year or $30/month (adds Healthspan, Stress Monitor)\n- **WHOOP Life:** $359/year or $40/month (medical-grade features: ECG, Blood Pressure Insights)\n- **Hidden Costs:** Replacement bands ($49+), Waterproof PowerPack ($49), WHOOP Body apparel ($79-$129), auto-renewal traps, hardware upgrade fees if <12 months on membership\n\n**The Features:**\n- 24/7 heart rate, HRV, respiratory rate monitoring\n- Sleep stage tracking (light, deep, REM)\n- Daily Recovery Score (0-100%) and Strain Score\n- Healthspan (biological age/pace of aging)\n- Stress Monitor and haptic alarms\n- Blood Pressure Insights and ECG (WHOOP MG only)\n- Integration with Peloton, Strava, Garmin\n- AI coaching recommendations in-app\n\n**The Weakness (Our \"Attack Vector\"):**\n- **Walled Garden Problem:** WHOOP only interprets WHOOP data. Users with 23andMe results, blood panels, or other wearables get zero value. They can't upload external data.\n- **Hardware Lock-in:** You must buy their device to access any insights. No device = no service.\n- **Accuracy Complaints:** Widespread reports of inaccurate HR readings, \"fake strain,\" sleep detection failures—especially with alternative wear options (boxers). Users don't trust the data.\n- **Action Gap:** WHOOP tells you your Recovery Score is 47%, but doesn't tell you *specifically* what to eat, which supplements to take, or how to adjust your day based on your unique genetics + bloodwork + wearable data combined.\n- **Strategic Insight:** WHOOP users are already primed to pay for health optimization. They're frustrated by siloed data and generic recommendations. They're our ideal early adopters.\n\n| Feature | WHOOP (Them) | **The AI Biomarker Interpreter (Us)** |\n| :---- | :---- | :---- |\n| **Philosophy** | \"Buy our hardware, get our insights\" | **\"Bring any data, get unified insights\"** |\n| **Pricing** | **$199-$359/year + hardware lock-in** | **$149/year or $19/month (no hardware required)** |\n| **User Experience** | \"Single-source data, proprietary ecosystem\" | **\"Universal data aggregator—upload anything\"** |\n| **Incentive** | Sell more hardware, increase subscription tiers | **Maximize user health outcomes from existing data** |\n\n---\n\n### **2. Competitor: InsideTracker**\nhttps://www.insidetracker.com\n\n**The Model:** Test-and-interpret bundle. InsideTracker sells blood testing packages and provides AI-powered recommendations based on results. Revenue comes from expensive test kits ($199-$589 per test) plus optional subscriptions for ongoing tracking. They make money when you buy more tests.\n\n**The Price:**\n- **InnerAge 2.0:** $199 (basic longevity markers)\n- **Essentials:** $249 (core biomarkers)\n- **Performance:** $399 (athletic optimization)\n- **Ultimate:** $589 (comprehensive 43+ biomarkers)\n- **DNA Kit Add-on:** $249\n- **Subscription (Pro):** $99/year for ongoing tracking dashboard\n- **Hidden Costs:** Tests must be repeated every 3-6 months for \"optimal\" tracking ($800-$2,000+/year), lab visit fees in some areas\n\n**The Features:**\n- Blood biomarker analysis (glucose, cholesterol, inflammation, hormones, vitamins)\n- DNA integration for genetic insights\n- \"InnerAge\" biological age calculation\n- Personalized food and supplement recommendations\n- Goal-based action plans (performance, longevity, immunity)\n- Progress tracking over time\n- Integration with Garmin, Apple Health, Fitbit\n\n**The Weakness (Our \"Attack Vector\"):**\n- **Expensive Redundancy:** Most users already have blood work from their doctor or annual physicals. InsideTracker forces you to pay $200-$600 for *their* tests instead of interpreting what you already have.\n- **No External Data Upload:** Can't upload existing 23andMe, Ancestry, or third-party lab results. You must use their testing partners.\n- **Upsell-Driven Model:** Their business model incentivizes selling more tests, not maximizing value from existing data. Recommendations often push toward \"get more tests.\"\n- **One-Time Snapshot:** Without expensive repeat testing, insights become stale. No real-time integration with wearables for dynamic recommendations.\n- **Strategic Insight:** InsideTracker users have proven willingness to pay $500+ for health insights. They're frustrated by the \"test treadmill\" and would pay for a service that maximizes their existing data.\n\n| Feature | InsideTracker (Them) | **The AI Biomarker Interpreter (Us)** |\n| :---- | :---- | :---- |\n| **Philosophy** | \"Buy our tests, get our analysis\" | **\"Upload any test, get superior analysis\"** |\n| **Pricing** | **$199-$589 per test + $99/year subscription** | **$149/year flat—unlimited uploads** |\n| **User Experience** | \"Proprietary testing required\" | **\"Works with your existing data instantly\"** |\n| **Incentive** | Sell more blood tests | **Maximize insights from data you already own** |\n\n---\n\n### **3. Competitor: Levels Health**\nhttps://www.levels.health\n\n**The Model:** Continuous Glucose Monitor (CGM) subscription. Levels provides CGM hardware (Abbott Libre sensors) plus an app that interprets glucose data and provides metabolic health insights. Revenue from monthly subscriptions ($199-$399/month) that include sensor hardware.\n\n**The Price:**\n- **Monthly Membership:** $199/month (includes 2 CGM sensors + app)\n- **Annual Membership:** $199/month billed annually ($2,388/year)\n- **Guided Program:** $399/month (includes coaching)\n- **Hidden Costs:** Sensors last ~14 days each, so you need continuous subscription; no value without their hardware\n\n**The Features:**\n- Real-time glucose monitoring and Zone Scores\n- Metabolic health insights and glucose stability tracking\n- Food logging with glucose response analysis\n- Sleep and exercise impact on glucose\n- Personalized recommendations to stabilize blood sugar\n- Educational content on metabolic health\n- Integration with Apple Health, Oura, WHOOP\n\n**The Weakness (Our \"Attack Vector\"):**\n- **Single Biomarker Obsession:** Levels only tracks glucose. Ignores genetics, comprehensive bloodwork, hormones, inflammation, vitamins—all of which affect metabolic health.\n- **Extreme Price Point:** $199-$399/month ($2,400-$4,800/year) is prohibitive for most consumers. Only accessible to wealthy biohackers.\n- **Hardware Dependency:** No CGM = no service. Can't use the platform without continuous sensor purchases.\n- **Narrow Recommendations:** Advice is limited to \"eat this, not that\" based on glucose spikes. Doesn't address root causes (genetics, nutrient deficiencies, sleep quality).\n- **Strategic Insight:** Levels users are the ultimate biohackers—willing to spend $200+/month on health data. They're hungry for a platform that synthesizes glucose data with their other biomarkers for holistic recommendations.\n\n| Feature | Levels Health (Them) | **The AI Biomarker Interpreter (Us)** |\n| :---- | :---- | :---- |\n| **Philosophy** | \"Track glucose, optimize metabolism\" | **\"Synthesize ALL biomarkers, optimize everything\"** |\n| **Pricing** | **$199-$399/month ($2,400+/year)** | **$149/year (50x cheaper)** |\n| **User Experience** | \"Single metric, deep dive\" | **\"Unified dashboard, holistic protocols\"** |\n| **Incentive** | Sell CGM sensors monthly | **Maximize value from all your health data** |\n\n---\n\n### **4. Competitor: Promethease / Genetic Genie**\nhttps://promethease.com / https://geneticgenie.org\n\n**The Model:** One-time genetic report generators. Users upload raw DNA data from 23andMe or Ancestry and receive a report analyzing genetic variants. Revenue from one-time report fees ($12-$29). No ongoing relationship or actionable protocols.\n\n**The Price:**\n- **Promethease:** $12 one-time (basic SNP report)\n- **Genetic Genie:** Free basic report, $29 for methylation/detox panels\n- **Hidden Costs:** Reports are dense, technical, and require medical knowledge to interpret. No action plans included.\n\n**The Features:**\n- Raw DNA file upload (23andMe, Ancestry, etc.)\n- SNP analysis with links to research studies\n- Health risk associations\n- Carrier status for genetic conditions\n- Methylation pathway analysis (Genetic Genie)\n\n**The Weakness (Our \"Attack Vector\"):**\n- **Information Overload, Zero Action:** Reports dump thousands of SNPs with no prioritization or \"what to do about it.\" Users are more confused after reading than before.\n- **No Integration:** Genetic data exists in isolation. No connection to bloodwork, wearables, or lifestyle factors.\n- **Outdated Model:** One-time reports become stale. No ongoing optimization or updated recommendations as new research emerges.\n- **Medical Jargon:** Reports require PhD-level genetics knowledge to understand. Average user can't translate findings into daily habits.\n- **Strategic Insight:** Millions of people have used these services and have reports sitting unused. They represent a massive \"data-rich, insight-poor\" audience desperate for someone to tell them what their genetics actually mean for their daily life.\n\n| Feature | Promethease/Genetic Genie (Them) | **The AI Biomarker Interpreter (Us)** |\n| :---- | :---- | :---- |\n| **Philosophy** | \"Here's your raw genetic data—good luck\" | **\"Here's what your genetics mean for TODAY\"** |\n| **Pricing** | **$12-$29 one-time** | **$149/year for living, updated protocols** |\n| **User Experience** | \"Dense research reports\" | **\"Simple daily action checklists\"** |\n| **Incentive** | Sell one report, move on | **Build long-term health optimization relationship** |\n\n---\n\n### **3. The Market Matrix (Comparison)**\n\n| Feature | WHOOP | InsideTracker | Levels Health | Promethease | **The AI Biomarker Interpreter (Us)** |\n| :---- | :---- | :---- | :---- | :---- | :---- |\n| **Primary Goal** | Wearable recovery tracking | Blood test interpretation | Glucose optimization | Genetic report generation | **Unified biomarker interpretation + action protocols** |\n| **Data Sources Accepted** | WHOOP device only | InsideTracker tests only | Levels CGM only | 23andMe/Ancestry DNA only | **ANY source: DNA, blood labs, wearables, CGMs** |\n| **Upload/Entry Cost** | $199-$359/year + device | $199-$589 per test | $199-$399/month | $12-$29 one-time | **$0 to upload (subscription for insights)** |\n| **Annual Cost** | $199-$359 | $500-$2,000+ (with repeat tests) | $2,388-$4,788 | $12-$29 | **$149/year** |\n| **Actionable Protocols** | Generic recovery advice | Food/supplement suggestions | Glucose-specific diet tips | None—raw data only | **Daily personalized protocols: diet, sleep, supplements, exercise** |\n| **Vibe/Positioning** | Elite athlete performance | Longevity-focused professionals | Metabolic health biohackers | DIY genetics enthusiasts | **\"Your personal health translator\"** |\n| **Best For** | Athletes wanting recovery data | People who'll pay for premium blood tests | Wealthy glucose optimizers | Curious genetics hobbyists | **Anyone with existing health data who wants a clear action plan** |\n\n---\n\n## **3. Business Analysis**\n\n* **Target Audience:** \n  - **Primary:** \"Data Rich, Insight Poor\" consumers—people who have taken DNA tests (23andMe, Ancestry), received blood panels from doctors, or own wearables (WHOOP, Oura, Apple Watch, Fitbit) but don't know how to synthesize this information into daily action.\n  - **Secondary:** Biohackers and fitness enthusiasts who are already spending $500-$5,000/year on health optimization but frustrated by siloed data and generic recommendations.\n  - **Tertiary:** People with chronic issues (fatigue, digestion, brain fog, sleep problems) who have \"tried everything\" but haven't connected the dots between their biomarkers and their symptoms.\n  - **Demographics:** 28-55 years old, $75K+ household income, health-conscious, tech-comfortable, likely already using 2+ health tracking tools.\n\n* **Unique Value Proposition (UVP):** \n> **\"We don't sell tests. We don't sell hardware. We sell the plan.\"**\n\nThe AI Biomarker Interpreter is the first platform that accepts data from ANY source and synthesizes it into a unified, personalized daily protocol. We're the \"universal translator\" between your biology and your behavior—turning complex medical jargon into simple morning routines, meal suggestions, supplement stacks, and sleep protocols.\n\n---\n\n### **1. The Core Business Strategy**\n\n**The \"Interpretation Layer\" Model**\n\nEvery competitor in the health tech space is trying to sell you more data—more tests, more devices, more sensors. But the real problem isn't data scarcity; it's **data paralysis**. The average health-conscious consumer has:\n- A DNA report from 23andMe or Ancestry (unused)\n- Annual blood work from their doctor (filed away)\n- A wearable generating daily metrics (glanced at, not acted on)\n- Maybe a CGM experiment or specialized test (forgotten)\n\n**We position ourselves as the aggregation and interpretation layer that sits on top of ALL existing health data.** We don't compete with testing companies or hardware makers—we make their products more valuable. This creates several strategic advantages:\n\n1. **Zero Hardware Costs:** No manufacturing, inventory, or supply chain complexity.\n2. **Universal Compatibility:** We become more valuable as users accumulate more data sources.\n3. **Recurring Revenue:** Protocols update dynamically as new data is uploaded or research emerges.\n4. **Network Effects:** More users = better AI recommendations = more users.\n5. **Partnership Potential:** Testing companies and wearable makers can integrate with us to increase their product value.\n\n---\n\n### **2. Primary Revenue Streams**\n\n#### **Stream A: Core Subscription — \"The Interpreter Plan\"**\n* **Product:** Unlimited data uploads from any source (DNA, blood labs, wearables) + AI-generated personalized daily protocols + monthly protocol updates + symptom tracking + progress dashboard\n* **Price:** **$149/year or $19/month**\n* **Why it wins:** \n  - **50-90% cheaper than competitors** (vs. WHOOP $199-$359, InsideTracker $500+, Levels $2,400+)\n  - **No hardware required**—works with data users already have\n  - **Unlimited uploads**—add new blood work, connect new wearables, update DNA anytime\n  - **Living protocols**—recommendations evolve as new data comes in and research updates\n\n#### **Stream B: Premium Tier — \"The Optimizer Plan\"**\n* **Product:** Everything in Core + quarterly \"Deep Dive\" reports with root cause analysis + priority access to new features + 1:1 AI chat for health questions + family sharing (up to 4 profiles)\n* **Price:** **$299/year or $34/month**\n* **Why it wins:**\n  - **Family value**—$75/person/year for households vs. $199+/person for competitors\n  - **Deeper analysis**—quarterly reports identify patterns across months of data\n  - **Conversational AI**—ask \"Why am I tired?\" and get answers synthesized from YOUR data\n  - **Positions us for B2B**—family plans prove multi-user value for corporate wellness\n\n---\n\n### **3. Secondary Revenue Streams**\n\n#### **Stream C: Affiliate Revenue — Supplement & Product Recommendations**\n* **Model:** When our AI recommends specific supplements, foods, or products, we earn affiliate commissions (8-20%) from partner brands.\n* **Projected Revenue:** $15-$40/user/year based on industry benchmarks\n* **Why it's ethical:** Recommendations are based on user biomarkers first; we only partner with brands that meet quality standards. Users can opt out of product suggestions.\n\n#### **Stream D: B2B Corporate Wellness**\n* **Model:** License the platform to employers for employee wellness programs. Employees upload their own data; employers get anonymized aggregate insights.\n* **Price:** $50-$100/employee/year (minimum 100 employees)\n* **Why it wins:** Employers spend $500-$1,500/employee/year on wellness programs with poor engagement. We offer a premium, personalized experience at a fraction of the cost.\n\n#### **Stream E: API & White-Label Partnerships**\n* **Model:** License our interpretation engine to health apps, testing companies, and wearable makers who want to offer \"actionable insights\" without building their own AI.\n* **Price:** Revenue share or per-API-call pricing\n* **Strategic Value:** Testing companies like Everlywell, LetsGetChecked, or even 23andMe could integrate our interpretation layer to increase their product value and reduce customer churn.\n\n#### **Stream F: One-Time \"Quick Interpretation\" Reports**\n* **Model:** For users not ready to subscribe, offer a one-time comprehensive report from a single data upload.\n* **Price:** $49 per report\n* **Why it works:** Low-friction entry point that converts to subscriptions. Competes directly with Promethease ($12) but offers 10x more actionable value.\n\n---\n\n### **Final Comparison Table**\n\n| Revenue Stream | **The AI Biomarker Interpreter (Us)** | WHOOP | InsideTracker | Levels Health |\n| :---- | :---- | :---- | :---- | :---- |\n| **Primary Cost** | **$0 (no hardware)** | $0 (device \"included\") | $199-$589 per test | $199-$399/month (includes CGM) |\n| **Annual Subscription** | **$149/year (Core) or $299/year (Premium)** | $199-$359/year | $99/year (dashboard only) | $2,388-$4,788/year |\n| **Hardware Required** | **None** | Yes (WHOOP device) | No (but tests required) | Yes (CGM sensors) |\n| **Data Sources Accepted** | **Unlimited (any source)** | WHOOP only | InsideTracker tests only | Levels CGM only |\n| **Actionable Daily Protocols** | **Yes—diet, sleep, supplements, exercise** | Generic recovery advice | Food/supplement suggestions | Glucose-specific tips |\n| **Primary Customer** | **\"Data Rich, Insight Poor\" health optimizers** | Athletes/fitness enthusiasts | Longevity-focused professionals | Wealthy metabolic biohackers |\n| **Upsell Model** | **Premium tier + affiliate + B2B** | Hardware upgrades + accessories | More tests + repeat testing | Coaching tier + continued sensors |\n\n---\n\n## **4. Strategic Recommendations**\n\n### **Go-to-Market Priority:**\n1. **Launch with DNA + Blood Lab interpretation** (largest existing data pool—100M+ 23andMe/Ancestry users)\n2. **Add wearable integrations** in Phase 2 (WHOOP, Oura, Apple Health, Garmin)\n3. **CGM integration** in Phase 3 (partner with Levels users frustrated by cost)\n\n### **Key Messaging:**\n- *\"You already have the data. We give you the plan.\"*\n- *\"Stop collecting biomarkers. Start using them.\"*\n- *\"The $149/year health translator.\"*\n\n### **Competitive Moat:**\n- **Data network effects:** More data sources = better AI = more accurate protocols\n- **Universal compatibility:** We're the Switzerland of health data—neutral, compatible with everyone\n- **Trust through transparency:** Show users exactly why each recommendation is made (cite their specific biomarkers)\n\n---\n\n## **5. Risk Assessment**\n\n| Risk | Likelihood | Mitigation |\n| :---- | :---- | :---- |\n| **Regulatory (FDA/medical device classification)** | Medium | Position as \"wellness\" not \"medical\"; no diagnosis or treatment claims |\n| **Data privacy concerns** | Medium | SOC 2 compliance, HIPAA-adjacent practices, user data ownership |\n| **AI accuracy/liability** | Medium | Clear disclaimers, human review option, conservative recommendations |\n| **Competitor response (23andMe adds interpretation)** | High | Move fast, build brand loyalty, offer superior multi-source synthesis |\n| **User activation (people don't upload data)** | Medium | Gamification, onboarding flow, \"quick win\" first protocol |\n\n---\n\n## **Final Verdict**\n\n**The AI Biomarker Interpreter addresses a massive, underserved market:** the millions of people who have invested in health data but aren't getting value from it. By positioning as the \"interpretation layer\" rather than another data collector, we avoid competing with well-funded hardware and testing companies—and instead become a value-add to their ecosystems.\n\n**The economics are compelling:**\n- 10-50x cheaper than competitors\n- Zero hardware/inventory costs\n- High-margin SaaS model\n- Multiple revenue diversification paths\n\n**The timing is right:**\n- 100M+ people have DNA data sitting unused\n- Wearable fatigue is real—people want action, not more graphs\n- AI capabilities now enable personalized protocol generation at scale\n\n**Recommendation: Proceed to MVP development with focus on DNA + blood lab interpretation, targeting the \"Data Rich, Insight Poor\" biohacker segment.**"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "versionCounter": 39,
+  "shared": [
+    {
+      "updatedAt": "2026-02-02T20:46:56.599Z",
+      "createdAt": "2026-02-02T20:46:56.599Z",
+      "role": "workflow:owner",
+      "workflowId": "PG9SLBFlorZSRsS9",
+      "projectId": "v4al7bTCYyvas3Ag",
+      "project": {
+        "updatedAt": "2025-11-05T00:41:42.313Z",
+        "createdAt": "2025-11-04T16:43:50.069Z",
+        "id": "v4al7bTCYyvas3Ag",
+        "name": "Dmytro Afanasiev <dmytro.automation.ai@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "projectRelations": [
+          {
+            "updatedAt": "2025-11-04T16:43:50.069Z",
+            "createdAt": "2025-11-04T16:43:50.069Z",
+            "userId": "bb0f3dea-b149-45ad-85a5-17b4783cb215",
+            "projectId": "v4al7bTCYyvas3Ag",
+            "user": {
+              "updatedAt": "2026-02-02T19:40:18.427Z",
+              "createdAt": "2025-11-04T16:43:48.956Z",
+              "id": "bb0f3dea-b149-45ad-85a5-17b4783cb215",
+              "email": "dmytro.automation.ai@gmail.com",
+              "firstName": "Dmytro",
+              "lastName": "Afanasiev",
+              "personalizationAnswers": {
+                "version": "v4",
+                "personalization_survey_submitted_at": "2025-11-04T16:46:23.823Z",
+                "personalization_survey_n8n_version": "1.118.1",
+                "automationGoalDevops": [],
+                "companyType": "saas",
+                "role": "engineering"
+              },
+              "settings": {
+                "userActivated": true,
+                "firstSuccessfulWorkflowId": "MQw3EP5TMzUjvGDE",
+                "userActivatedAt": 1769827561707,
+                "easyAIWorkflowOnboarded": true,
+                "npsSurvey": {
+                  "responded": true,
+                  "lastShownAt": 1765501201457
+                },
+                "dismissedCallouts": {
+                  "ragStarterCallout": true
+                }
+              },
+              "disabled": false,
+              "mfaEnabled": false,
+              "lastActiveAt": "2026-02-02",
+              "isPending": false
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}
