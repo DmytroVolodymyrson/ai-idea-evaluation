@@ -1,0 +1,20 @@
+#!/bin/bash
+# Pre-commit hook: Ensure memory/STATUS.md is updated when code changes
+# Install: git config core.hooksPath .githooks
+
+STAGED=$(git diff --cached --name-only)
+HAS_WORK_FILES=$(echo "$STAGED" | grep -v 'memory/STATUS.md' | grep -c '.')
+HAS_STATUS=$(echo "$STAGED" | grep -c 'memory/STATUS.md')
+
+if [ "$HAS_WORK_FILES" -gt 0 ] && [ "$HAS_STATUS" -eq 0 ]; then
+    echo ""
+    echo "WARNING: You're committing work files but memory/STATUS.md wasn't updated."
+    echo ""
+    echo "   Changed files:"
+    echo "$STAGED"
+    echo ""
+    echo "   Please update memory/STATUS.md to reflect current project state."
+    echo "   To skip this check: git commit --no-verify"
+    echo ""
+    exit 1
+fi
